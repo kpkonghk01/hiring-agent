@@ -55,6 +55,8 @@ GDRIVE_FOLDER_ID/
 
 不設也能跑，但 GitHub 未登入的上限是每小時 60 次，批次跑很快就會用完。
 
+**已經用 `gh auth login` 登入 GitHub CLI 的話，可以不設。** `GITHUB_TOKEN` 是空的時候，`batch.py` 會自動執行 `gh auth token` 取得 token，只在這次執行中使用，不會印出也不會存檔。`gh` 的 token 權限比較大，通常可以讀寫 private repo。如果你想用最小權限，就照下面的步驟申請 fine-grained token，填進 `GITHUB_TOKEN`，它的優先順序比 `gh` 高。
+
 1. GitHub 右上角頭像 → **Settings** → **Developer settings** → **Personal access tokens** → **Fine-grained tokens** → **Generate new token**
 2. 填寫表單：
    - **Token name**：例如 `hiring-agent`。

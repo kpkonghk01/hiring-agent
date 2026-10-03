@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import sqlite3
+import subprocess
 import sys
 from datetime import datetime
 from functools import partial
@@ -43,6 +44,7 @@ DEFAULT_CLIENT_SECRET = "credentials/client_secret.json"
 DEFAULT_TOKEN = "credentials/token.json"
 # Failures of the environment rather than of one Resume: shown as a message, not a traceback.
 RUNTIME_ERRORS = (HttpError, GoogleAuthError, OSError, sqlite3.Error)
+GH_TIMEOUT_SECONDS = 10
 
 
 def parse_args(argv=None) -> argparse.Namespace:
@@ -126,7 +128,7 @@ def main(argv=None) -> int:
         print(f"Error: {err}", file=sys.stderr)
         return 2
 
-    _warn_without_github_token()
+    _ensure_github_token()
     print(f"Role {role.name} · judge {judge.label} · extraction {extractor.label}")
     settings = RunSettings(
         role=role,
@@ -247,13 +249,40 @@ def _configure_output(verbose: bool) -> None:
         os.environ.setdefault("TQDM_DISABLE", "1")  # Marker's progress bars
 
 
-def _warn_without_github_token() -> None:
-    if not os.getenv("GITHUB_TOKEN"):
-        print(
-            "⚠️  GITHUB_TOKEN is not set: GitHub allows only 60 requests/hour, which a batch "
-            "exhausts quickly (see docs/custom-usage.md).",
-            file=sys.stderr,
+def _ensure_github_token() -> None:
+    """Use GITHUB_TOKEN, else borrow the GitHub CLI's login, else warn.
+
+    github.py reads GITHUB_TOKEN from the environment, so a token from ``gh`` is
+    exported for this process only; it is never printed or stored.
+    """
+    if os.getenv("GITHUB_TOKEN"):
+        return
+    token = _gh_auth_token()
+    if token:
+        os.environ["GITHUB_TOKEN"] = token
+        print("Using the GitHub CLI login (gh auth token) for GitHub API requests.")
+        return
+    print(
+        "⚠️  No GitHub token: set GITHUB_TOKEN or log in with `gh auth login`. Without one "
+        "GitHub allows only 60 requests/hour, which a batch exhausts quickly "
+        "(see docs/custom-usage.md).",
+        file=sys.stderr,
+    )
+
+
+def _gh_auth_token() -> Optional[str]:
+    """The GitHub CLI's token, or None if gh is missing or not logged in."""
+    try:
+        result = subprocess.run(
+            ["gh", "auth", "token"],
+            capture_output=True,
+            text=True,
+            timeout=GH_TIMEOUT_SECONDS,
+            check=True,
         )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout.strip() or None
 
 
 def _print_start(verbose: bool, index: int, total: int, refs) -> None:
