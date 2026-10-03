@@ -108,7 +108,8 @@ def format_table(rows: List[dict], role: Role) -> str:
             str(row["rank"]),
             str(row["overall_score"]),
             row["batch"],
-            _clip(row["file_name"], _FILE_WIDTH),
+            # Platform exports share a job-title prefix; the distinctive part is the end.
+            _clip_start(row["file_name"], _FILE_WIDTH),
             _clip(row.get("name", ""), _NAME_WIDTH),
         ]
         + [_cell(row.get(f"{c.key}_score", "")) for c in role.categories]
@@ -139,6 +140,11 @@ def _clip(text: str, limit: int) -> str:
     while _width(text[:end]) > limit - 1:
         end -= 1
     return text[:end] + "…"
+
+
+def _clip_start(text: str, limit: int) -> str:
+    """Like ``_clip`` but keeps the end of the text."""
+    return _clip(text[::-1], limit)[::-1]
 
 
 def _width(text: str) -> int:
