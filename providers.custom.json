@@ -1,0 +1,20 @@
+{
+  "providers": {
+    "openrouter": {
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "structured_output": "json_schema",
+      "extra_body": {
+        "provider": { "require_parameters": true, "data_collection": "deny" }
+      },
+      "models": "*"
+    },
+    "llamacpp": {
+      "base_url": "http://localhost:8080/v1",
+      "base_url_env": "LLAMACPP_BASE_URL",
+      "api_key_env": null,
+      "structured_output": "json_schema",
+      "models": "*"
+    }
+  }
+}
