@@ -58,10 +58,14 @@ _AUTH_STATUSES = {401, 403}
 # bounds the gap between bytes, so a provider that holds the connection open (as an
 # OpenRouter upstream did in a trial run) would otherwise hang the batch forever.
 _DEFAULT_LLM_TIMEOUT_SECONDS = 90.0
-# EXTRACTION_REASONING=off adds OpenRouter's switch for a model's thinking phase to
-# extraction calls: transcription needs no reasoning. Opt-in, because OpenRouter
-# finds no endpoint at all when a model without reasoning support receives it.
+# EXTRACTION_REASONING / JUDGE_REASONING = off add OpenRouter's switch for a model's
+# thinking phase to that stage's calls. In trials, reasoning models at our low
+# temperature sometimes thought without end (160k characters in 150 s, no answer),
+# which looked like a hung provider; with thinking off the same calls took ~2 s.
+# Opt-in, because OpenRouter finds no endpoint at all when a model without
+# reasoning support receives the switch.
 _REASONING_OFF = {"reasoning": {"enabled": False}}
+REASONING_SETTINGS = ("EXTRACTION_REASONING", "JUDGE_REASONING")
 
 
 def llm_timeout_seconds() -> float:
@@ -170,16 +174,15 @@ def resolve_choice(model: str, provider: Optional[str] = None) -> LLMChoice:
     return LLMChoice(provider=name, model=model, params=params)
 
 
-def extraction_extra_body() -> dict:
-    """Extra request fields for extraction calls, from ``EXTRACTION_REASONING``."""
-    setting = (os.getenv("EXTRACTION_REASONING") or "default").strip().lower()
+def reasoning_extra_body(setting_name: str) -> dict:
+    """Extra request fields for one stage, from env ``setting_name`` (see
+    ``REASONING_SETTINGS``): ``off`` disables thinking, ``default`` sends nothing."""
+    setting = (os.getenv(setting_name) or "default").strip().lower()
     if setting == "default":
         return {}
     if setting == "off":
         return _REASONING_OFF
-    raise ValueError(
-        f"EXTRACTION_REASONING must be 'off' or 'default', got '{setting}'"
-    )
+    raise ValueError(f"{setting_name} must be 'off' or 'default', got '{setting}'")
 
 
 def build_client(

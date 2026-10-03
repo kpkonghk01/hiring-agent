@@ -32,7 +32,8 @@ from custom.llm import (
     LLMAuthError,
     LLMChoice,
     build_client,
-    extraction_extra_body,
+    REASONING_SETTINGS,
+    reasoning_extra_body,
     llm_timeout_seconds,
     resolve_choice,
 )
@@ -126,7 +127,8 @@ def main(argv=None) -> int:
     try:
         role = load_role(args.role)
         llm_timeout_seconds()  # reject malformed LLM settings before any work
-        extraction_extra_body()
+        for setting in REASONING_SETTINGS:
+            reasoning_extra_body(setting)
         judge = resolve_choice(args.model or config.DEFAULT_MODEL, args.provider)
         extractor = resolve_choice(
             os.getenv("EXTRACTION_MODEL") or config.DEFAULT_MODEL,
@@ -200,8 +202,10 @@ def _report(results, role: Role, judge: LLMChoice, args, drive, local_path) -> b
 
 
 def _stages(judge: LLMChoice, extractor: LLMChoice, verbose: bool) -> Stages:
-    judge_client = build_client(judge)
-    extractor_client = build_client(extractor, extraction_extra_body())
+    judge_client = build_client(judge, reasoning_extra_body("JUDGE_REASONING"))
+    extractor_client = build_client(
+        extractor, reasoning_extra_body("EXTRACTION_REASONING")
+    )
     ocr = MarkerOcr()
     quiet = (lambda fn: fn) if verbose else _silenced
     return Stages(

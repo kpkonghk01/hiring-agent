@@ -86,7 +86,9 @@ provider 定義在 `providers.json`（upstream 的檔案，不要改）和 `prov
   - `quantizations`：排除 fp4 這類低精度量化。
 
   試跑時發現同一個 model 背後有大約 30 家上游 provider，品質和穩定度差很多，所以加了後兩項。如果某個 model 因此找不到可用的上游 provider，請換一個 model。
-- `EXTRACTION_REASONING=off`：抽取時關掉 model 的思考階段。抽取只是照抄，不需要思考。**只能用在支援 reasoning 的 model**，不支援的 model 加了這個參數，OpenRouter 會回 404。
+- `EXTRACTION_REASONING=off`、`JUDGE_REASONING=off`：分別在抽取和評分時關掉 model 的思考階段。
+  - **用推理型 model 時強烈建議兩個都設。** 實測 `deepseek/deepseek-v4-flash-0731` 開著 reasoning 時，4 次請求裡有 2 次在 150 秒內吐出 12～16 萬字思考內容，始終沒有給答案，看起來就像卡住；關掉之後，同樣的請求 4 次都在 2 秒內完成，輸出也一樣。
+  - **只能用在支援 reasoning 的 model**，不支援的 model 加了這個參數，OpenRouter 會回 404。
 - **`llamacpp`**：
   - 每次請求都帶 `repeat_penalty: 1.0`，覆蓋 llama-server 啟動時的 `--repeat-penalty`。重複懲罰會扭曲 JSON 輸出，因為 key、引號、日期格式本來就大量重複。
   - `llama-server` 不在意 model 名稱，但 `--model` 仍然要填一個能代表它的名字，例如 `qwen3-30b-a3b-q4`，因為這個名字會成為 Evaluation 的一部分（judge 是 `llamacpp:qwen3-30b-a3b-q4`）。
