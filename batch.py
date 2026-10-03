@@ -11,12 +11,14 @@ import io
 import logging
 import os
 import re
+import sqlite3
 import sys
 from datetime import datetime
 from functools import partial
 from pathlib import Path
 from typing import Optional
 
+from google.auth.exceptions import GoogleAuthError
 from googleapiclient.errors import HttpError
 
 import config
@@ -39,26 +41,56 @@ REPORTS_DIR = REPO_ROOT / "reports"
 DEFAULT_STORE_PATH = "data/hiring_agent.sqlite"
 DEFAULT_CLIENT_SECRET = "credentials/client_secret.json"
 DEFAULT_TOKEN = "credentials/token.json"
+# Failures of the environment rather than of one Resume: shown as a message, not a traceback.
+RUNTIME_ERRORS = (HttpError, GoogleAuthError, OSError, sqlite3.Error)
 
 
 def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Score Resumes against a Role, skipping work already in the store."
     )
-    parser.add_argument("path", nargs="?", help="--source local: a resume PDF or a folder of PDFs")
+    parser.add_argument(
+        "path", nargs="?", help="--source local: a resume PDF or a folder of PDFs"
+    )
     parser.add_argument(
         "--role", required=True, help=f"Available: {', '.join(list_available_roles())}"
     )
     parser.add_argument("--source", choices=("local", "gdrive"), required=True)
-    parser.add_argument("--since", type=_batch_date, metavar="YYYYMMDD", help="first Batch (gdrive, inclusive)")
-    parser.add_argument("--to", type=_batch_date, metavar="YYYYMMDD", help="last Batch (gdrive, inclusive)")
+    parser.add_argument(
+        "--since",
+        type=_batch_date,
+        metavar="YYYYMMDD",
+        help="first Batch (gdrive, inclusive)",
+    )
+    parser.add_argument(
+        "--to",
+        type=_batch_date,
+        metavar="YYYYMMDD",
+        help="last Batch (gdrive, inclusive)",
+    )
     parser.add_argument("--provider", help="judging provider (default: LLM_PROVIDER)")
     parser.add_argument("--model", help="judging model (default: DEFAULT_MODEL)")
-    parser.add_argument("--re-extract", action="store_true", help="re-extract; drops those Resumes' Evaluations")
-    parser.add_argument("--re-evaluate", action="store_true", help="re-judge even if an Evaluation exists")
-    parser.add_argument("--limit", type=_positive_int, metavar="N", help="process at most N Resumes")
-    parser.add_argument("--upload-sheet", action="store_true", help="also upload the Ranking as a Google Sheet")
-    parser.add_argument("--verbose", action="store_true", help="show upstream logs and full reports")
+    parser.add_argument(
+        "--re-extract",
+        action="store_true",
+        help="re-extract; drops those Resumes' Evaluations",
+    )
+    parser.add_argument(
+        "--re-evaluate",
+        action="store_true",
+        help="re-judge even if an Evaluation exists",
+    )
+    parser.add_argument(
+        "--limit", type=_positive_int, metavar="N", help="process at most N Resumes"
+    )
+    parser.add_argument(
+        "--upload-sheet",
+        action="store_true",
+        help="also upload the Ranking as a Google Sheet",
+    )
+    parser.add_argument(
+        "--verbose", action="store_true", help="show upstream logs and full reports"
+    )
     args = parser.parse_args(argv)
 
     if args.source == "local" and not args.path:
@@ -81,13 +113,16 @@ def main(argv=None) -> int:
         role = load_role(args.role)
         judge = resolve_choice(args.model or config.DEFAULT_MODEL, args.provider)
         extractor = resolve_choice(
-            os.getenv("EXTRACTION_MODEL") or config.DEFAULT_MODEL, os.getenv("EXTRACTION_PROVIDER")
+            os.getenv("EXTRACTION_MODEL") or config.DEFAULT_MODEL,
+            os.getenv("EXTRACTION_PROVIDER"),
         )
         if args.source == "gdrive":
             _gdrive_folder_id()  # fail on missing config before opening a browser for OAuth
-        drive = _drive_service() if args.source == "gdrive" or args.upload_sheet else None
+        drive = (
+            _drive_service() if args.source == "gdrive" or args.upload_sheet else None
+        )
         source = _source(args, local_path, drive)
-    except (ValueError, FileNotFoundError) as err:
+    except (ValueError, *RUNTIME_ERRORS) as err:
         print(f"Error: {err}", file=sys.stderr)
         return 2
 
@@ -112,27 +147,37 @@ def main(argv=None) -> int:
                 on_start=partial(_print_start, args.verbose),
                 on_result=partial(_print_result, role, args.verbose),
             )
-    except HttpError as err:
-        print(f"Google Drive error: {err}", file=sys.stderr)
+    except RUNTIME_ERRORS as err:
+        print(f"Error while processing Resumes: {err}", file=sys.stderr)
         return 2
     if not results:
         print("No Resumes found.")
         return 0
-    _report(results, role, judge, args, drive, local_path)
-    return 0 if all(r.ok for r in results) else 1
+    reported = _report(results, role, judge, args, drive, local_path)
+    return 0 if reported and all(r.ok for r in results) else 1
 
 
-def _report(results, role: Role, judge: LLMChoice, args, drive, local_path) -> None:
+def _report(results, role: Role, judge: LLMChoice, args, drive, local_path) -> bool:
+    """Print and save the Ranking; False if the optional Sheet upload failed."""
     rows = ranking_rows(results, role, judge.label)
     print()
     print(format_table(rows, role))
     csv_path = REPORTS_DIR / f"{_report_name(args, role, judge, local_path)}.csv"
     write_csv(rows, csv_path)
     print(f"\nRanking written to {csv_path.relative_to(REPO_ROOT)}")
-    if args.upload_sheet:
-        title = f"{csv_path.stem} ({datetime.now():%Y-%m-%d %H:%M})"
+    if not args.upload_sheet:
+        return True
+    title = f"{csv_path.stem} ({datetime.now():%Y-%m-%d %H:%M})"
+    try:
         link = google_auth.upload_csv_as_sheet(drive, csv_path, title)
-        print(f"Ranking uploaded as a Google Sheet: {link}")
+    except RUNTIME_ERRORS as err:
+        print(
+            f"Error: could not upload the Ranking as a Google Sheet: {err}",
+            file=sys.stderr,
+        )
+        return False
+    print(f"Ranking uploaded as a Google Sheet: {link}")
+    return True
 
 
 def _stages(judge: LLMChoice, extractor: LLMChoice, verbose: bool) -> Stages:
@@ -141,9 +186,17 @@ def _stages(judge: LLMChoice, extractor: LLMChoice, verbose: bool) -> Stages:
     ocr = MarkerOcr()
     quiet = (lambda fn: fn) if verbose else _silenced
     return Stages(
-        extract=quiet(lambda data, name: extract_resume(ocr, data, name, extractor, extractor_client)),
+        extract=quiet(
+            lambda data, name: extract_resume(
+                ocr, data, name, extractor, extractor_client
+            )
+        ),
         enrich=quiet(lambda resume, role: enrich(resume, role, judge, judge_client)),
-        evaluate=quiet(lambda resume, github, role: evaluate(resume, github, role, judge, judge_client)),
+        evaluate=quiet(
+            lambda resume, github, role: evaluate(
+                resume, github, role, judge, judge_client
+            )
+        ),
     )
 
 
@@ -162,7 +215,9 @@ def _source(args, local_path: Optional[Path], drive):
         if local_path is None or not local_path.exists():
             raise FileNotFoundError(f"'{local_path}' does not exist")
         return LocalResumeSource(local_path)
-    return GoogleDriveResumeSource(drive, _gdrive_folder_id(), since=args.since, to=args.to)
+    return GoogleDriveResumeSource(
+        drive, _gdrive_folder_id(), since=args.since, to=args.to
+    )
 
 
 def _gdrive_folder_id() -> str:
@@ -186,7 +241,9 @@ def _configure_output(verbose: bool) -> None:
         format="%(levelname)s %(name)s: %(message)s",
     )
     if not verbose:
-        logging.getLogger("evaluator").setLevel(logging.CRITICAL)  # logs every raw response
+        logging.getLogger("evaluator").setLevel(
+            logging.CRITICAL
+        )  # logs every raw response
         os.environ.setdefault("TQDM_DISABLE", "1")  # Marker's progress bars
 
 
@@ -205,7 +262,9 @@ def _print_start(verbose: bool, index: int, total: int, refs) -> None:
     print(label, end="\n" if verbose else " …", flush=True)
 
 
-def _print_result(role: Role, verbose: bool, index: int, total: int, result: ResumeResult) -> None:
+def _print_result(
+    role: Role, verbose: bool, index: int, total: int, result: ResumeResult
+) -> None:
     if result.resume is None or result.evaluation is None:
         print(f" ✗ {result.failed_step}: {result.failure}")
         return
@@ -214,7 +273,9 @@ def _print_result(role: Role, verbose: bool, index: int, total: int, result: Res
     score = overall_score(result.evaluation, role)
     print(f" extract:{extracted} evaluate:{evaluated} → {score}")
     if verbose:
-        name = result.resume.basics.name if result.resume.basics else result.refs[0].name
+        name = (
+            result.resume.basics.name if result.resume.basics else result.refs[0].name
+        )
         _print_full_report(result.evaluation, role, name)
 
 
@@ -231,7 +292,12 @@ def _report_name(args, role: Role, judge: LLMChoice, local_path: Path) -> str:
         scope = f"{args.since or 'first'}-{args.to or 'last'}"
     else:
         scope = local_path.stem
-    return "__".join(_slug(part) for part in (role.name, judge.label, scope))
+    parts = [role.name, judge.label, scope]
+    if args.limit:
+        parts.append(
+            f"limit{args.limit}"
+        )  # a partial Ranking must not replace the complete one
+    return "__".join(_slug(part) for part in parts)
 
 
 def _slug(text: str) -> str:

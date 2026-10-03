@@ -4,6 +4,7 @@ The side-effecting steps (OCR + extraction, GitHub Enrichment, judging) are inje
 as ``Stages`` so the cache rules can be tested with fakes.
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Callable, Iterable, List, Optional, Tuple
 
@@ -12,8 +13,10 @@ from pydantic import BaseModel
 from custom.github_enrichment import UNAVAILABLE, GitHubOutcome
 from custom.sources import ResumeRef, ResumeSource
 from custom.store import EvaluationKey, Store
-from models import JSONResume
+from models import JSONResume, build_evaluation_model
 from roles import Role
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -98,9 +101,15 @@ def process_resume(
     stages: Stages,
 ) -> ResumeResult:
     try:
-        resume, extraction_reused = _extracted_resume(refs[0], source, store, settings, stages)
+        resume, extraction_reused = _extracted_resume(
+            refs[0], source, store, settings, stages
+        )
         key = EvaluationKey(refs[0].resume_hash, settings.role_hash, settings.judge)
-        stored = None if settings.re_evaluate else store.get_evaluation(key)
+        stored = (
+            None
+            if settings.re_evaluate
+            else _cached(_stored_evaluation, store, key, settings)
+        )
         if stored:
             return ResumeResult(
                 refs, resume, stored.evaluation, stored.github, extraction_reused, True
@@ -113,25 +122,55 @@ def process_resume(
 
 def _extracted_resume(ref, source, store, settings, stages) -> Tuple[JSONResume, bool]:
     if not settings.re_extract:
-        cached = store.get_extracted(ref.resume_hash)
+        cached = _cached(store.get_extracted, ref.resume_hash)
         if cached is not None:
             return cached, True
     data = _attempt("download", source.read_bytes, ref)
     resume = _attempt("extract", stages.extract, data, ref.name)
     if not _has_core_content(resume):
-        raise _StepFailed("extract", "no usable data extracted (run with --verbose for details)")
+        raise _StepFailed(
+            "extract", "no usable data extracted (run with --verbose for details)"
+        )
     store.put_extracted(ref.resume_hash, resume, settings.extracted_by)
     return resume, False
 
 
-def _new_evaluation(resume, key, store, settings, stages) -> Tuple[dict, Optional[dict]]:
+def _new_evaluation(
+    resume, key, store, settings, stages
+) -> Tuple[dict, Optional[dict]]:
     outcome = _attempt("github", stages.enrich, resume, settings.role)
     if outcome.status == UNAVAILABLE:
-        raise _StepFailed("github", f"could not fetch GitHub profile {outcome.profile_url}")
-    evaluation = _attempt("evaluate", stages.evaluate, resume, outcome.data, settings.role)
+        raise _StepFailed(
+            "github", f"could not fetch {outcome.profile_url}: {outcome.reason}"
+        )
+    evaluation = _attempt(
+        "evaluate", stages.evaluate, resume, outcome.data, settings.role
+    )
     evaluation_dict = evaluation.model_dump()
     store.put_evaluation(key, settings.role.name, evaluation_dict, outcome.data)
     return evaluation_dict, outcome.data
+
+
+def _stored_evaluation(store: Store, key: EvaluationKey, settings: RunSettings):
+    stored = store.get_evaluation(key)
+    if stored is not None:
+        build_evaluation_model(settings.role).model_validate(stored.evaluation)
+    return stored
+
+
+def _cached(read: Callable, *args):
+    """A cache read; a row the current models cannot load (e.g. after an upstream
+    schema change) counts as a miss, so it is recomputed instead of failing the batch.
+    """
+    try:
+        return read(*args)
+    except Exception as err:
+        logger.warning(
+            "Ignoring unreadable cached entry (%s: %s); recomputing",
+            type(err).__name__,
+            err,
+        )
+        return None
 
 
 def _attempt(step: str, fn: Callable, *args):
@@ -145,5 +184,11 @@ def _has_core_content(resume: Optional[JSONResume]) -> bool:
     """Mirrors score.is_valid_resume_data (importing score.py has side effects)."""
     if resume is None:
         return False
-    core = (resume.basics, resume.work, resume.education, resume.skills, resume.projects)
+    core = (
+        resume.basics,
+        resume.work,
+        resume.education,
+        resume.skills,
+        resume.projects,
+    )
     return any(section is not None for section in core)

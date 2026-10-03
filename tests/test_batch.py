@@ -4,7 +4,13 @@ from collections import Counter
 
 import pytest
 
-from custom.github_enrichment import FETCHED, NO_PROFILE, NOT_FOUND, UNAVAILABLE, GitHubOutcome
+from custom.github_enrichment import (
+    FETCHED,
+    NO_PROFILE,
+    NOT_FOUND,
+    UNAVAILABLE,
+    GitHubOutcome,
+)
 from custom.pipeline import RunSettings, Stages, run
 from custom.ranking import ranking_rows
 from custom.sources import ResumeRef
@@ -17,7 +23,10 @@ ROLE = load_role("software_engineering_intern")
 
 def make_evaluation(score):
     return build_evaluation_model(ROLE)(
-        scores={c.key: {"score": score, "max": c.max, "evidence": "e"} for c in ROLE.categories},
+        scores={
+            c.key: {"score": score, "max": c.max, "evidence": "e"}
+            for c in ROLE.categories
+        },
         bonus_points={"total": 0, "breakdown": "-"},
         deductions={"total": 0, "reasons": "-"},
         key_strengths=["s"],
@@ -63,11 +72,15 @@ class FakeStages:
 
 
 def ref(name, resume_hash, batch="20261001"):
-    return ResumeRef(source_id=f"id-{name}", name=name, resume_hash=resume_hash, batch=batch)
+    return ResumeRef(
+        source_id=f"id-{name}", name=name, resume_hash=resume_hash, batch=batch
+    )
 
 
 def settings(**overrides):
-    base = dict(role=ROLE, role_hash="role-v1", judge="ollama:a", extracted_by="ollama:x")
+    base = dict(
+        role=ROLE, role_hash="role-v1", judge="ollama:a", extracted_by="ollama:x"
+    )
     return RunSettings(**{**base, **overrides})
 
 
@@ -147,7 +160,12 @@ def test_failed_extraction_is_not_stored(store):
 
 def test_ranking_covers_reused_evaluations_and_lists_failures_last(store):
     source = FakeSource(ref("low.pdf", "h1"), ref("high.pdf", "h2"))
-    run(source, store, settings(), FakeStages(scores={"low.pdf": 1, "high.pdf": 9}).stages())
+    run(
+        source,
+        store,
+        settings(),
+        FakeStages(scores={"low.pdf": 1, "high.pdf": 9}).stages(),
+    )
     source = FakeSource(*source.refs, ref("broken.pdf", "h3"))
     results = run(source, store, settings(), FakeStages(extract_ok=False).stages())
 

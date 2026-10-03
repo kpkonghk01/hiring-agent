@@ -14,7 +14,9 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",  # list and download Resumes
     "https://www.googleapis.com/auth/drive.file",  # create Ranking Sheets in a folder this app owns
 ]
-_HTTP_TIMEOUT_SECONDS = 60  # httplib2 has no default timeout; a stalled read would hang forever
+_HTTP_TIMEOUT_SECONDS = (
+    60  # httplib2 has no default timeout; a stalled read would hang forever
+)
 _FOLDER_MIME = "application/vnd.google-apps.folder"
 _SHEET_MIME = "application/vnd.google-apps.spreadsheet"
 
@@ -77,7 +79,11 @@ def upload_csv_as_sheet(service, csv_path: Path, title: str) -> str:
     created = (
         service.files()
         .create(
-            body={"name": title, "mimeType": _SHEET_MIME, "parents": [_report_folder_id(service)]},
+            body={
+                "name": title,
+                "mimeType": _SHEET_MIME,
+                "parents": [_report_folder_id(service)],
+            },
             media_body=MediaFileUpload(str(csv_path), mimetype="text/csv"),
             fields="id, webViewLink",
             supportsAllDrives=True,
@@ -110,12 +116,18 @@ def _report_folder_id(service) -> str:
     created = (
         service.files()
         .create(
-            body={"name": REPORT_FOLDER_NAME, "mimeType": _FOLDER_MIME, "appProperties": {key: value}},
+            body={
+                "name": REPORT_FOLDER_NAME,
+                "mimeType": _FOLDER_MIME,
+                "appProperties": {key: value},
+            },
             fields="id",
         )
         .execute()
     )
-    logger.warning("Created Google Drive folder '%s' for Ranking Sheets", REPORT_FOLDER_NAME)
+    logger.warning(
+        "Created Google Drive folder '%s' for Ranking Sheets", REPORT_FOLDER_NAME
+    )
     return created["id"]
 
 

@@ -45,6 +45,7 @@ GDRIVE_FOLDER_ID=...                               # 和 cv-agent .env 的值相
 ```
 
 `.env`、`credentials/`、`*.sqlite`、`reports/` 都已經 gitignore。
+`.env` 裡的相對路徑（`STORE_PATH`、`GOOGLE_OAUTH_*`）一律相對於 **repo 根目錄**，跟你在哪個目錄執行指令無關。
 
 ## 3. Google Drive 授權
 
@@ -63,7 +64,7 @@ GDRIVE_FOLDER_ID/
 │   ├── 張三.pdf
 │   └── 李四.pdf
 ├── 20261002/
-└── archive/       ← 名稱不是日期，會被略過（log 會出現警告）
+└── archive/       ← 名稱不是真實日期（含 20261340 這類），會被略過（log 會出現警告）
 ```
 
 母資料夾裡直接放的 PDF 不會被讀取。
@@ -90,16 +91,20 @@ provider 定義在 `providers.json`（upstream 的檔案，不要改）和 `prov
 
 | provider | 用途 | 需要的 env |
 |---|---|---|
-| `openrouter` | 任何 OpenRouter model（`"models": "*"`） | `OPENROUTER_API_KEY` |
+| `openrouter` | OpenRouter（`"models": "*"`，不列出 model） | `OPENROUTER_API_KEY` |
 | `llamacpp` | 本機或區網的 `llama-server`（`"models": "*"`） | `LLAMACPP_BASE_URL`（選填） |
-| `ollama` / `gemini` / `anthropic` | upstream 原有，只接受 `providers.json` 列出的 model | 見 README |
+| `ollama` / `gemini` / `anthropic` | upstream 原有 | 見 README |
+
+`batch.py` 怎麼決定 provider：
+- 有 `--provider`（評分）、`EXTRACTION_PROVIDER`（抽取）或 `LLM_PROVIDER` 時，就用指定的那個，**任何 model 名稱都接受**。列在 provider 底下的 model 用列出的 temperature/top_p；沒列出的用 0.1/0.9。
+- 都沒有時，就和 upstream 一樣，找「列出這個 model」的 provider。`"*"` 的 provider 不會被這樣推斷出來。
 
 - **`openrouter`** 預設帶 `data_collection: deny`，排除會拿資料去訓練的上游 provider。還有 `require_parameters: true`，只路由到支援 JSON schema 輸出的上游 provider。如果某個 model 因此找不到可用的上游 provider，請換一個 model。
 - **`llamacpp`**：
   - `llama-server` 不在意 model 名稱，但 `--model` 仍然要填一個能代表它的名字，例如 `qwen3-30b-a3b-q4`，因為這個名字會成為 Evaluation 的一部分（judge 是 `llamacpp:qwen3-30b-a3b-q4`）。
   - 如果你的 llama-server 有設 `--api-key`，就在 `providers.custom.json` 把 `"api_key_env"` 改成 `"LLAMACPP_API_KEY"`，再到 `.env` 設定這個值。
 - 要新增其他 OpenAI-compatible 服務，在 `providers.custom.json` 加一段，照抄 `llamacpp` 的格式就可以。
-- `LLM_PROVIDER` 也會影響 upstream 的 `score.py`，所以 `DEFAULT_MODEL` 要設成那個 provider 有的 model。
+- upstream 的 `score.py` **不看** `LLM_PROVIDER`，只認列在 provider 底下的 model。如果要用 `score.py` 打 OpenRouter，就在 `providers.custom.json` 把 `openrouter` 的 `"models"` 改成列出 model 的 object，例如 `{"qwen/qwen3-235b-a22b-2507": {"temperature": 0.1, "top_p": 0.9}}`，並讓 `DEFAULT_MODEL` 指向它。
 
 ### 抽取 model 和評分 model 分開設定
 
@@ -142,13 +147,20 @@ uv run python batch.py ... --verbose
 | `--re-evaluate` | 用目前的 Role 和 judge 重新評分，覆蓋舊的那一份 |
 | `--limit N` | 最多處理 N 份 Resume（依 Batch、檔名排序） |
 
-結束代碼：`0` 表示全部成功，`1` 表示有 Resume 失敗（會列在 Ranking 最後），`2` 表示設定錯誤。
+結束代碼：
+- `0`：全部成功。
+- `1`：有 Resume 失敗（會列在 Ranking 最後），或 Sheet 上傳失敗（CSV 已經寫好）。
+- `2`：參數或設定錯誤，或在處理過程中遇到 Google Drive、OAuth、網路、SQLite 錯誤。
 
 ## 7. 輸出
 
 - **進度**：每份 Resume 一行，例如 `[3/40] 20261002 張三.pdf … extract:cached evaluate:new → 72.5`。
 - **Ranking 表**：依 overall score 排序。overall score 的算法是各 category 分數（以 Role 的上限封頂）加 bonus 減 deductions，和 `score.py` 印出的 OVERALL SCORE 相同。失敗的 Resume 列在最後，附上原因。
-- **CSV**：寫到 `reports/<role>__<provider_model>__<since>-<to>.csv`，編碼是 UTF-8 BOM，Excel 可以直接開。欄位沿用 upstream CSV，另外加上 `rank`、`overall_score`、`batch`、`judge`、`resume_hash`、`failed_step`、`failure`。同樣的條件再跑一次會覆蓋，因為內容一定是完整的。
+- **CSV**：寫到 `reports/<role>__<provider_model>__<範圍>.csv`，編碼是 UTF-8 BOM，Excel 可以直接開。
+  - `<範圍>`：gdrive 是 `<since>-<to>`，沒指定時分別寫成 `first`、`last`；local 是檔名或資料夾名稱。
+  - 加了 `--limit N` 時，檔名後面會再加 `__limitN`，避免不完整的 Ranking 蓋掉完整的那份。
+  - 欄位沿用 upstream CSV，另外加上 `rank`、`overall_score`、`batch`、`judge`、`resume_hash`、`failed_step`、`failure`。
+  - 同樣的條件再跑一次會覆蓋舊檔，因為內容一定是完整的。
 - **Google Sheet**（`--upload-sheet`）：每次執行都建一份新的，標題後面附上建立時間。
 
 ## 8. 快取規則：什麼時候會重做？
@@ -163,7 +175,9 @@ uv run python batch.py ... --verbose
 | PDF 內容有任何不同（例如重新匯出） | 視為新 Resume | 視為新 Resume |
 | 上次失敗（抽取失敗、GitHub 暫時抓不到、LLM 錯誤） | 下次自動重試 | 下次自動重試 |
 
-Resume 上的 GitHub 帳號如果不存在（404），會在沒有 GitHub Enrichment 的情況下照常評分。
+GitHub Enrichment 的規則：
+- 抓取期間只要遇到 rate limit（403/429）、5xx 或網路錯誤，該 Evaluation 就算失敗，下次再試。
+- Resume 上的 GitHub 帳號如果不存在（404）或網址解析不出帳號，就在沒有 GitHub Enrichment 的情況下照常評分。
 
 ## 9. Role
 

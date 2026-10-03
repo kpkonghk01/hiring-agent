@@ -1,25 +1,32 @@
-"""GitHub Enrichment for one Evaluation, telling a missing profile from a failed fetch."""
+"""GitHub Enrichment for one Evaluation, telling a missing profile from a failed fetch.
 
-import os
+Upstream's github.py swallows every API failure and returns empty data, so a rate
+limit mid-run would look like "no projects". While enriching, every upstream API call
+is observed; any transient failure (rate limit, server error, network error) makes
+the outcome UNAVAILABLE, so the Evaluation fails and is retried instead of being
+stored without its GitHub Enrichment (CONTEXT.md).
+"""
+
+import logging
 from dataclasses import dataclass
-from typing import Optional
-
-import requests
+from typing import List, Optional
 
 import github
-from custom.llm import LLMChoice, bound_to
+from custom.llm import LLMChoice, bound_to, patched
 from models import JSONResume, OpenAICompatibleProvider
 from roles import Role
 
-# Outcomes. Only UNAVAILABLE fails the Evaluation (CONTEXT.md: GitHub Enrichment);
-# a profile that does not exist will never be fetched, so it is judged without one.
+logger = logging.getLogger(__name__)
+
+# Outcomes. Only UNAVAILABLE fails the Evaluation; a linked profile that does not exist
+# (or a link with no parsable username) will never be fetched, so it is judged without one.
 NO_PROFILE = "no_profile"
 FETCHED = "fetched"
 NOT_FOUND = "not_found"
 UNAVAILABLE = "unavailable"
 
-_GITHUB_API = "https://api.github.com"
-_TIMEOUT_SECONDS = 10
+# Statuses that say "try again later" rather than "this does not exist".
+_TRANSIENT_STATUSES = {403, 429}
 
 
 @dataclass(frozen=True)
@@ -27,6 +34,7 @@ class GitHubOutcome:
     status: str
     profile_url: Optional[str] = None
     data: Optional[dict] = None  # upstream's {"profile", "projects", ...} when FETCHED
+    reason: Optional[str] = None  # why it is UNAVAILABLE
 
 
 def github_profile_url(resume: JSONResume) -> Optional[str]:
@@ -44,26 +52,35 @@ def enrich(
     url = github_profile_url(resume)
     if not url:
         return GitHubOutcome(NO_PROFILE)
-    with bound_to(github, choice, client):
-        data = github.fetch_and_display_github_info(url, position_title=role.position_title)
+    failures: List[str] = []
+    with (
+        bound_to(github, choice, client),
+        patched(
+            github, _fetch_github_api=_observed(github._fetch_github_api, failures)
+        ),
+    ):
+        data = github.fetch_and_display_github_info(
+            url, position_title=role.position_title
+        )
+    if failures:
+        logger.warning("GitHub fetch for %s failed: %s", url, "; ".join(failures))
+        return GitHubOutcome(UNAVAILABLE, url, reason=failures[0])
     if data and "profile" in data:
         return GitHubOutcome(FETCHED, url, data)
-    return GitHubOutcome(_failure_status(url), url)
+    return GitHubOutcome(NOT_FOUND, url)
 
 
-def _failure_status(url: str) -> str:
-    """Upstream returns {} for every failure; ask GitHub whether the user exists at all."""
-    username = github.extract_github_username(url)
-    if not username:
-        return NOT_FOUND
-    headers = {}
-    token = os.environ.get("GITHUB_TOKEN")
-    if token:
-        headers["Authorization"] = f"token {token}"
-    try:
-        response = requests.get(
-            f"{_GITHUB_API}/users/{username}", headers=headers, timeout=_TIMEOUT_SECONDS
-        )
-    except requests.RequestException:
-        return UNAVAILABLE
-    return NOT_FOUND if response.status_code == 404 else UNAVAILABLE
+def _observed(fetch, failures: List[str]):
+    """Wrap upstream's GitHub API call, recording transient failures it would swallow."""
+
+    def observed(api_url, params=None):
+        try:
+            status, data = fetch(api_url, params)
+        except Exception as err:
+            failures.append(f"{type(err).__name__} on {api_url}: {err}")
+            raise
+        if status in _TRANSIENT_STATUSES or status >= 500:
+            failures.append(f"HTTP {status} on {api_url}")
+        return status, data
+
+    return observed

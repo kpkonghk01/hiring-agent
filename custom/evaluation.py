@@ -23,10 +23,10 @@ def evaluate(
     if github_data:
         text += convert_github_data_to_text(github_data)
     with bound_to(evaluator, choice, client):
-        judge = evaluator.ResumeEvaluator(
+        resume_evaluator = evaluator.ResumeEvaluator(
             role=role,
             evaluation_model=build_evaluation_model(role),
             model_name=choice.model,
             model_params=choice.params,
         )
-        return judge.evaluate_resume(text)
+        return resume_evaluator.evaluate_resume(text)

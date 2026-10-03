@@ -10,14 +10,24 @@ from models import build_evaluation_model
 from roles import Role
 from transform import transform_evaluation_response
 
+# Terminal table column widths (display columns; CJK characters count as two).
+_FILE_WIDTH = 32
+_NAME_WIDTH = 16
+
 
 def overall_score(evaluation: dict, role: Role) -> float:
     """Categories (capped at the Role's maxima) + bonus - deductions, capped like the
     OVERALL SCORE that score.py prints."""
     caps = {c.key: c.max for c in role.categories}
     scores = evaluation["scores"]
-    categories = sum(min(scores[key]["score"], cap) for key, cap in caps.items() if key in scores)
-    total = categories + evaluation["bonus_points"]["total"] - evaluation["deductions"]["total"]
+    categories = sum(
+        min(scores[key]["score"], cap) for key, cap in caps.items() if key in scores
+    )
+    total = (
+        categories
+        + evaluation["bonus_points"]["total"]
+        - evaluation["deductions"]["total"]
+    )
     return round(min(total, sum(caps.values()) + role.bonus_max), 1)
 
 
@@ -98,8 +108,8 @@ def format_table(rows: List[dict], role: Role) -> str:
             str(row["rank"]),
             str(row["overall_score"]),
             row["batch"],
-            _clip(row["file_name"], 32),
-            _clip(row.get("name", ""), 16),
+            _clip(row["file_name"], _FILE_WIDTH),
+            _clip(row.get("name", ""), _NAME_WIDTH),
         ]
         + [_cell(row.get(f"{c.key}_score", "")) for c in role.categories]
         for row in rows
@@ -137,4 +147,6 @@ def _width(text: str) -> int:
 
 
 def _render(cells: List[str], widths: List[int]) -> str:
-    return "  ".join(cell + " " * (width - _width(cell)) for cell, width in zip(cells, widths))
+    return "  ".join(
+        cell + " " * (width - _width(cell)) for cell, width in zip(cells, widths)
+    )

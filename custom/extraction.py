@@ -30,7 +30,9 @@ class OcrPDFHandler(pdf.PDFHandler):
         if not markdown.strip():
             logger.error("OCR found no text in %s", self._file_name)
             return None
-        return compose_resume_text(markdown, _text_layer_hint(Path(pdf_path)), self._file_name)
+        return compose_resume_text(
+            markdown, _text_layer_hint(Path(pdf_path)), self._file_name
+        )
 
 
 def _text_layer_hint(pdf_path: Path) -> str:
@@ -39,7 +41,9 @@ def _text_layer_hint(pdf_path: Path) -> str:
     try:
         return extract_text_layer(pdf_path)
     except Exception as err:
-        logger.warning("Could not read the PDF text layer (%s); continuing with OCR only", err)
+        logger.warning(
+            "Could not read the PDF text layer (%s); continuing with OCR only", err
+        )
         return ""
 
 

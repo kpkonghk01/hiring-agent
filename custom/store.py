@@ -64,18 +64,23 @@ class Store:
 
     def get_extracted(self, resume_hash: str) -> Optional[JSONResume]:
         row = self._conn.execute(
-            "SELECT resume_json FROM extracted_resumes WHERE resume_hash = ?", (resume_hash,)
+            "SELECT resume_json FROM extracted_resumes WHERE resume_hash = ?",
+            (resume_hash,),
         ).fetchone()
         return JSONResume.model_validate_json(row[0]) if row else None
 
-    def put_extracted(self, resume_hash: str, resume: JSONResume, extracted_by: str) -> None:
+    def put_extracted(
+        self, resume_hash: str, resume: JSONResume, extracted_by: str
+    ) -> None:
         """Store (or replace) a Resume's Extracted Resume.
 
         Replacing it invalidates every Evaluation of that Resume, since they were
         judged on the old extraction — both happen in one transaction.
         """
         with self._conn:
-            self._conn.execute("DELETE FROM evaluations WHERE resume_hash = ?", (resume_hash,))
+            self._conn.execute(
+                "DELETE FROM evaluations WHERE resume_hash = ?", (resume_hash,)
+            )
             self._conn.execute(
                 "INSERT OR REPLACE INTO extracted_resumes VALUES (?, ?, ?, ?)",
                 (resume_hash, resume.model_dump_json(), extracted_by, _now()),
@@ -94,7 +99,11 @@ class Store:
         )
 
     def put_evaluation(
-        self, key: EvaluationKey, role_name: str, evaluation: dict, github: Optional[dict]
+        self,
+        key: EvaluationKey,
+        role_name: str,
+        evaluation: dict,
+        github: Optional[dict],
     ) -> None:
         with self._conn:
             self._conn.execute(
@@ -105,7 +114,11 @@ class Store:
                     key.judge,
                     role_name,
                     json.dumps(evaluation, ensure_ascii=False),
-                    json.dumps(github, ensure_ascii=False) if github is not None else None,
+                    (
+                        json.dumps(github, ensure_ascii=False)
+                        if github is not None
+                        else None
+                    ),
                     _now(),
                 ),
             )
