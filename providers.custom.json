@@ -19,6 +19,7 @@
       "base_url_env": "LLAMACPP_BASE_URL",
       "api_key_env": null,
       "structured_output": "json_schema",
+      "extra_body": { "repeat_penalty": 1.0 },
       "models": "*"
     }
   }

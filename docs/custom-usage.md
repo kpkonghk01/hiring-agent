@@ -88,6 +88,7 @@ provider 定義在 `providers.json`（upstream 的檔案，不要改）和 `prov
   試跑時發現同一個 model 背後有大約 30 家上游 provider，品質和穩定度差很多，所以加了後兩項。如果某個 model 因此找不到可用的上游 provider，請換一個 model。
 - `EXTRACTION_REASONING=off`：抽取時關掉 model 的思考階段。抽取只是照抄，不需要思考。**只能用在支援 reasoning 的 model**，不支援的 model 加了這個參數，OpenRouter 會回 404。
 - **`llamacpp`**：
+  - 每次請求都帶 `repeat_penalty: 1.0`，覆蓋 llama-server 啟動時的 `--repeat-penalty`。重複懲罰會扭曲 JSON 輸出，因為 key、引號、日期格式本來就大量重複。
   - `llama-server` 不在意 model 名稱，但 `--model` 仍然要填一個能代表它的名字，例如 `qwen3-30b-a3b-q4`，因為這個名字會成為 Evaluation 的一部分（judge 是 `llamacpp:qwen3-30b-a3b-q4`）。
   - 如果你的 llama-server 有設 `--api-key`，就在 `providers.custom.json` 把 `"api_key_env"` 改成 `"LLAMACPP_API_KEY"`，再到 `.env` 設定這個值。
 - 要新增其他 OpenAI-compatible 服務，在 `providers.custom.json` 加一段，照抄 `llamacpp` 的格式就可以。
