@@ -11,6 +11,7 @@ from typing import Callable, Iterable, List, Optional, Tuple
 from pydantic import BaseModel
 
 from custom.github_enrichment import UNAVAILABLE, GitHubOutcome
+from custom.llm import LLMAuthError
 from custom.sources import ResumeRef, ResumeSource
 from custom.store import EvaluationKey, Store
 from models import JSONResume, build_evaluation_model
@@ -176,6 +177,8 @@ def _cached(read: Callable, *args):
 def _attempt(step: str, fn: Callable, *args):
     try:
         return fn(*args)
+    except LLMAuthError:
+        raise  # a rejected API key fails every Resume alike: stop the batch
     except Exception as err:  # one Resume's failure must not stop the batch
         raise _StepFailed(step, f"{type(err).__name__}: {err}") from err
 

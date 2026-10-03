@@ -16,7 +16,9 @@ import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from types import ModuleType
-from typing import Iterator, Optional
+from typing import Iterator, List, Optional, Union
+
+import requests
 
 import config
 from models import OpenAICompatibleProvider
@@ -38,6 +40,58 @@ class LLMChoice:
     @property
     def label(self) -> str:
         return f"{self.provider}:{self.model}"
+
+
+class LLMAuthError(Exception):
+    """The provider rejected the credentials; every later call would fail the same way,
+    so the whole batch stops instead of failing (and OCR-ing) Resume after Resume."""
+
+
+# HTTP statuses that mean the API key itself is wrong, revoked or not permitted.
+_AUTH_STATUSES = {401, 403}
+
+
+class ObservedClient:
+    """Wraps a provider client for one stage of one Resume.
+
+    Upstream pdf.py and github.py catch every LLM error and carry on, so failures are
+    recorded here: ``check()`` re-raises a rejected key, and ``first_failure`` explains
+    an extraction that came back empty.
+    """
+
+    def __init__(self, client: OpenAICompatibleProvider, choice: LLMChoice):
+        self._client = client
+        self._choice = choice
+        self._auth_error: Optional[LLMAuthError] = None
+        self._failures: List[str] = []
+
+    def chat(self, *args, **kwargs):
+        if self._auth_error:
+            raise self._auth_error  # no point calling again with a rejected key
+        try:
+            return self._client.chat(*args, **kwargs)
+        except requests.HTTPError as err:
+            status = getattr(err.response, "status_code", None)
+            if status in _AUTH_STATUSES:
+                self._auth_error = LLMAuthError(
+                    f"{self._choice.provider} rejected the API key (HTTP {status}) for "
+                    f"model '{self._choice.model}'; check its API key in .env"
+                )
+                raise self._auth_error from err
+            self._failures.append(f"{type(err).__name__}: {err}")
+            raise
+        except Exception as err:
+            self._failures.append(f"{type(err).__name__}: {err}")
+            raise
+
+    @property
+    def first_failure(self) -> Optional[str]:
+        return self._failures[0] if self._failures else None
+
+    def check(self) -> None:
+        """Re-raise a rejected key that upstream code swallowed."""
+        if self._auth_error:
+            raise self._auth_error
 
 
 def resolve_choice(model: str, provider: Optional[str] = None) -> LLMChoice:
@@ -74,7 +128,9 @@ def build_client(choice: LLMChoice) -> OpenAICompatibleProvider:
 
 @contextmanager
 def bound_to(
-    module: ModuleType, choice: LLMChoice, client: OpenAICompatibleProvider
+    module: ModuleType,
+    choice: LLMChoice,
+    client: Union[OpenAICompatibleProvider, ObservedClient],
 ) -> Iterator[None]:
     """Make ``module`` use ``choice`` and ``client`` for the duration of the block."""
     with patched(

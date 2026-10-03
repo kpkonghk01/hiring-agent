@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 import github
-from custom.llm import LLMChoice, bound_to, patched
+from custom.llm import LLMChoice, ObservedClient, bound_to, patched
 from models import JSONResume, OpenAICompatibleProvider
 from roles import Role
 
@@ -53,8 +53,9 @@ def enrich(
     if not url:
         return GitHubOutcome(NO_PROFILE)
     failures: List[str] = []
+    observed = ObservedClient(client, choice)
     with (
-        bound_to(github, choice, client),
+        bound_to(github, choice, observed),
         patched(
             github, _fetch_github_api=_observed(github._fetch_github_api, failures)
         ),
@@ -62,6 +63,7 @@ def enrich(
         data = github.fetch_and_display_github_info(
             url, position_title=role.position_title
         )
+    observed.check()  # project selection swallows LLM errors; a rejected key must stop
     if failures:
         logger.warning("GitHub fetch for %s failed: %s", url, "; ".join(failures))
         return GitHubOutcome(UNAVAILABLE, url, reason=failures[0])

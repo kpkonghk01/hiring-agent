@@ -5,7 +5,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 import evaluator
-from custom.llm import LLMChoice, bound_to
+from custom.llm import LLMChoice, ObservedClient, bound_to
 from models import JSONResume, OpenAICompatibleProvider, build_evaluation_model
 from roles import Role
 from transform import convert_github_data_to_text, convert_json_resume_to_text
@@ -22,7 +22,7 @@ def evaluate(
     text = convert_json_resume_to_text(resume)
     if github_data:
         text += convert_github_data_to_text(github_data)
-    with bound_to(evaluator, choice, client):
+    with bound_to(evaluator, choice, ObservedClient(client, choice)):
         resume_evaluator = evaluator.ResumeEvaluator(
             role=role,
             evaluation_model=build_evaluation_model(role),

@@ -28,7 +28,7 @@ from custom.evaluation import evaluate
 from custom.extraction import extract_resume
 from custom.github_enrichment import enrich
 from custom.hashing import role_hash
-from custom.llm import LLMChoice, build_client, resolve_choice
+from custom.llm import LLMAuthError, LLMChoice, build_client, resolve_choice
 from custom.ocr import MarkerOcr
 from custom.pipeline import ResumeResult, RunSettings, Stages, run
 from custom.ranking import format_table, overall_score, ranking_rows, write_csv
@@ -45,6 +45,11 @@ DEFAULT_TOKEN = "credentials/token.json"
 # Failures of the environment rather than of one Resume: shown as a message, not a traceback.
 RUNTIME_ERRORS = (HttpError, GoogleAuthError, OSError, sqlite3.Error)
 GH_TIMEOUT_SECONDS = 10
+QUIET_LOGGERS = {
+    "evaluator": logging.CRITICAL,
+    "pdfminer": logging.ERROR,
+    "surya": logging.ERROR,
+}
 
 
 def parse_args(argv=None) -> argparse.Namespace:
@@ -149,6 +154,9 @@ def main(argv=None) -> int:
                 on_start=partial(_print_start, args.verbose),
                 on_result=partial(_print_result, role, args.verbose),
             )
+    except LLMAuthError as err:
+        print(f"\nError: {err}", file=sys.stderr)
+        return 2
     except RUNTIME_ERRORS as err:
         print(f"Error while processing Resumes: {err}", file=sys.stderr)
         return 2
@@ -243,9 +251,11 @@ def _configure_output(verbose: bool) -> None:
         format="%(levelname)s %(name)s: %(message)s",
     )
     if not verbose:
-        logging.getLogger("evaluator").setLevel(
-            logging.CRITICAL
-        )  # logs every raw response
+        # Upstream and library chatter that would bury the one-line-per-Resume progress:
+        # evaluator logs every raw response, pdfminer warns about boss直聘 fonts, and
+        # surya announces "Force-killed llamacpp" when Marker shuts down.
+        for name, level in QUIET_LOGGERS.items():
+            logging.getLogger(name).setLevel(level)
         os.environ.setdefault("TQDM_DISABLE", "1")  # Marker's progress bars
 
 

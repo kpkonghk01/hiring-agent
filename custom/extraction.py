@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 import pdf
-from custom.llm import LLMChoice, bound_to
+from custom.llm import LLMChoice, ObservedClient, bound_to
 from custom.ocr import MarkerOcr, extract_text_layer
 from models import JSONResume, OpenAICompatibleProvider
 
@@ -76,5 +76,11 @@ def extract_resume(
     with tempfile.TemporaryDirectory() as tmp:
         pdf_path = Path(tmp) / "resume.pdf"
         pdf_path.write_bytes(pdf_bytes)
-        with bound_to(pdf, choice, client):
-            return OcrPDFHandler(ocr, file_name).extract_json_from_pdf(str(pdf_path))
+        observed = ObservedClient(client, choice)
+        with bound_to(pdf, choice, observed):
+            resume = OcrPDFHandler(ocr, file_name).extract_json_from_pdf(str(pdf_path))
+    observed.check()
+    if resume is None and observed.first_failure:
+        # pdf.py logs and swallows LLM errors; surface the cause instead of "no data".
+        raise RuntimeError(f"LLM call failed: {observed.first_failure}")
+    return resume

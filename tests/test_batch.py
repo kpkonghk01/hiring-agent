@@ -11,6 +11,7 @@ from custom.github_enrichment import (
     UNAVAILABLE,
     GitHubOutcome,
 )
+from custom.llm import LLMAuthError
 from custom.pipeline import RunSettings, Stages, run
 from custom.ranking import ranking_rows
 from custom.sources import ResumeRef
@@ -174,3 +175,18 @@ def test_ranking_covers_reused_evaluations_and_lists_failures_last(store):
     assert [r["file_name"] for r in rows] == ["high.pdf", "low.pdf", "broken.pdf"]
     assert [r["rank"] for r in rows] == [1, 2, ""]
     assert rows[-1]["failed_step"] == "extract"
+
+
+def test_rejected_api_key_stops_the_batch_at_the_first_resume(store):
+    source = FakeSource(ref("a.pdf", "h1"), ref("b.pdf", "h2"))
+    stages = FakeStages()
+
+    def rejected(data, file_name):
+        stages.calls["extract"] += 1
+        raise LLMAuthError("openrouter rejected the API key (HTTP 401)")
+
+    with pytest.raises(LLMAuthError):
+        run(source, store, settings(), Stages(rejected, stages.enrich, stages.evaluate))
+
+    assert stages.calls == Counter(extract=1)
+    assert store.get_extracted("h1") is None
