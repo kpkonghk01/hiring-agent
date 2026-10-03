@@ -1,0 +1,80 @@
+Extract the whole resume below into ONE JSON object: basics, work, education, skills, projects, awards and languages.
+
+The resume is often in Chinese, sometimes mixed with English. Keep every value in its original language and do not translate names, titles or technical terms.
+
+--- The input resume markdown starts here ---
+
+{{ text_content }}
+
+--- The input resume markdown ends here ---
+
+Return ONLY a JSON object with this structure (use [] for a section the resume does not have):
+{
+  "basics": {
+    "name": "Full name",
+    "email": "Email address",
+    "phone": "Phone number",
+    "url": null,
+    "summary": null,
+    "location": {"city": "City", "countryCode": "Country code"},
+    "profiles": [{"network": "Platform name", "url": "Full URL", "username": "Username from URL"}]
+  },
+  "work": [
+    {
+      "name": "Company name",
+      "position": "Job title",
+      "startDate": "Start date (YYYY-MM)",
+      "endDate": "End date (YYYY-MM) or 'Present'",
+      "summary": "Job description",
+      "highlights": ["Achievement 1", "Achievement 2"]
+    }
+  ],
+  "education": [
+    {
+      "institution": "School/University name",
+      "area": "Field of study",
+      "studyType": "Degree type",
+      "startDate": "Start date (YYYY-MM)",
+      "endDate": "End date (YYYY-MM)",
+      "score": "GPA/Percentage"
+    }
+  ],
+  "skills": [{"name": "Skill category", "level": null, "keywords": ["Skill 1", "Skill 2"]}],
+  "projects": [
+    {
+      "name": "Project name",
+      "description": "Project description",
+      "url": "Project URL",
+      "technologies": ["Tech 1", "Tech 2"]
+    }
+  ],
+  "awards": [{"title": "Award name", "date": "Award date (YYYY-MM)", "awarder": "Awarding organization"}],
+  "languages": [{"language": "粤语", "fluency": "流利"}]
+}
+
+**BASICS**
+- If there is any About Me or Summary section, put it in basics.summary.
+- If there is a link in the resume header or a portfolio link, put it in basics.url.
+
+**PROFILES (CRITICAL)**
+- ONLY extract URLs that are EXPLICITLY present in the resume, as markdown links [text](url) or plain URLs.
+- DO NOT create URLs that are not in the resume, and do not add generic platform URLs such as "https://github.com", "https://linkedin.com", "https://leetcode.com" or "https://stackoverflow.com" unless they actually appear.
+- If no URLs are found, return "profiles": [].
+- If a URL is present but its network or username is unclear, still include it with the available information.
+- A github.io or personal-domain URL has network "Portfolio".
+
+**WORK DATES**
+1. Date ranges usually appear as "Start – End", separated by "-", "–", "—", "至" or "to", near the position title or company name.
+2. Extract both the start and the end date of each range.
+3. An ongoing position may end with "Present", "Current", "Now", "至今" or "今"; use "Present".
+4. Dates may be "Month Year", "MM/YYYY", "YYYY.MM", "YYYY年MM月" or other variations; normalise to YYYY-MM. If only years are given (e.g. "2019-2021"), use the years only.
+
+**LANGUAGES**
+- Human languages only (spoken or written). Programming languages belong in skills, not here.
+- Include a language only if the resume states it explicitly: a language section (e.g. 语言能力), a certificate (CET-4/CET-6, IELTS, TOEFL, JLPT...) or a statement such as "粤语流利", "母语：粤语" or "Native Cantonese". Put a certificate and its score in "fluency" (e.g. "CET-6 520").
+- Do NOT infer languages from the candidate's name, hometown (籍贯), nationality, location, schools or employers.
+
+**SUPPLEMENTARY HINTS**
+- Text after a "--- Supplementary hint" line is not part of the resume body: use it only to fill fields the resume body is missing (e.g. a name rendered as an image), and prefer the resume body when they disagree.
+
+**IMPORTANT**: Return ONLY valid JSON. Do not include any explanatory text.

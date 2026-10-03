@@ -12,8 +12,10 @@ editing them, ``bound_to`` temporarily points one module at a chosen provider an
 model, so extraction and judging can use different models.
 """
 
+import logging
 import os
 import threading
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from types import ModuleType
@@ -23,6 +25,8 @@ import requests
 
 import config
 from models import OpenAICompatibleProvider
+
+logger = logging.getLogger(__name__)
 
 ANY_MODEL = "*"
 # The same fallback pdf.py and github.py use for models providers.json does not list.
@@ -53,7 +57,11 @@ _AUTH_STATUSES = {401, 403}
 # Wall-clock limit for one LLM call, retries included. Upstream's requests timeout only
 # bounds the gap between bytes, so a provider that holds the connection open (as an
 # OpenRouter upstream did in a trial run) would otherwise hang the batch forever.
-_DEFAULT_LLM_TIMEOUT_SECONDS = 300.0
+_DEFAULT_LLM_TIMEOUT_SECONDS = 90.0
+# EXTRACTION_REASONING=off adds OpenRouter's switch for a model's thinking phase to
+# extraction calls: transcription needs no reasoning. Opt-in, because OpenRouter
+# finds no endpoint at all when a model without reasoning support receives it.
+_REASONING_OFF = {"reasoning": {"enabled": False}}
 
 
 def llm_timeout_seconds() -> float:
@@ -115,7 +123,12 @@ class ObservedClient:
         if self._auth_error:
             raise self._auth_error  # no point calling again with a rejected key
         try:
-            return _with_deadline(self._client.chat, self._timeout, *args, **kwargs)
+            started = time.monotonic()
+            reply = _with_deadline(self._client.chat, self._timeout, *args, **kwargs)
+            logger.info(
+                "%s answered in %.1fs", self._choice.label, time.monotonic() - started
+            )
+            return reply
         except requests.HTTPError as err:
             status = getattr(err.response, "status_code", None)
             if status in _AUTH_STATUSES:
@@ -157,7 +170,22 @@ def resolve_choice(model: str, provider: Optional[str] = None) -> LLMChoice:
     return LLMChoice(provider=name, model=model, params=params)
 
 
-def build_client(choice: LLMChoice) -> OpenAICompatibleProvider:
+def extraction_extra_body() -> dict:
+    """Extra request fields for extraction calls, from ``EXTRACTION_REASONING``."""
+    setting = (os.getenv("EXTRACTION_REASONING") or "default").strip().lower()
+    if setting == "default":
+        return {}
+    if setting == "off":
+        return _REASONING_OFF
+    raise ValueError(
+        f"EXTRACTION_REASONING must be 'off' or 'default', got '{setting}'"
+    )
+
+
+def build_client(
+    choice: LLMChoice, extra_body: Optional[dict] = None
+) -> OpenAICompatibleProvider:
+    """A client for ``choice``; ``extra_body`` adds stage-specific request fields."""
     spec = _provider_spec(choice.provider)
     base_url_env = spec.get("base_url_env")
     base_url = (os.getenv(base_url_env) if base_url_env else None) or spec["base_url"]
@@ -168,6 +196,7 @@ def build_client(choice: LLMChoice) -> OpenAICompatibleProvider:
         extra_body={
             **spec.get("extra_body", {}),
             **_listed_config(spec, choice.model).get("extra_body", {}),
+            **(extra_body or {}),
         },
     )
 

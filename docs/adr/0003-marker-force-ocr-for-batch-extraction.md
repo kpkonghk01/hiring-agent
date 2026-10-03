@@ -14,3 +14,4 @@ The Resumes this fork processes are exported from boss直聘, whose PDFs carry a
 - Batch runs are sequential: Marker/pdfium is not thread-safe.
 - `score.py` (single-file, upstream) keeps PyMuPDF; this only applies to `batch.py`.
 - Extraction is wired by subclassing `PDFHandler` and overriding `extract_text_from_pdf`, so `pdf.py` stays untouched (ADR 0001).
+- Update (2026-10-03): for throughput the subclass also overrides `_extract_all_sections_separately` to ask for the whole resume, languages included, in one call (`custom/prompts/resume.jinja`, merged from upstream's section templates) instead of upstream's six per-section calls that each resend the resume. Upstream's JSON cleanup and normalisation are still used.

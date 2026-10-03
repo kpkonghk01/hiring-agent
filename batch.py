@@ -32,6 +32,7 @@ from custom.llm import (
     LLMAuthError,
     LLMChoice,
     build_client,
+    extraction_extra_body,
     llm_timeout_seconds,
     resolve_choice,
 )
@@ -124,7 +125,8 @@ def main(argv=None) -> int:
     _configure_output(args.verbose)
     try:
         role = load_role(args.role)
-        llm_timeout_seconds()  # reject a malformed LLM_TIMEOUT before any work
+        llm_timeout_seconds()  # reject malformed LLM settings before any work
+        extraction_extra_body()
         judge = resolve_choice(args.model or config.DEFAULT_MODEL, args.provider)
         extractor = resolve_choice(
             os.getenv("EXTRACTION_MODEL") or config.DEFAULT_MODEL,
@@ -199,7 +201,7 @@ def _report(results, role: Role, judge: LLMChoice, args, drive, local_path) -> b
 
 def _stages(judge: LLMChoice, extractor: LLMChoice, verbose: bool) -> Stages:
     judge_client = build_client(judge)
-    extractor_client = build_client(extractor)
+    extractor_client = build_client(extractor, extraction_extra_body())
     ocr = MarkerOcr()
     quiet = (lambda fn: fn) if verbose else _silenced
     return Stages(
@@ -312,12 +314,16 @@ def _print_result(
     role: Role, verbose: bool, index: int, total: int, result: ResumeResult
 ) -> None:
     if result.resume is None or result.evaluation is None:
-        print(f" ✗ {result.failed_step}: {result.failure}")
+        print(
+            f" ✗ {result.failed_step}: {result.failure} ({_duration(result.seconds)})"
+        )
         return
     extracted = "cached" if result.extraction_reused else "new"
     evaluated = "cached" if result.evaluation_reused else "new"
     score = overall_score(result.evaluation, role)
-    print(f" extract:{extracted} evaluate:{evaluated} → {score}")
+    print(
+        f" extract:{extracted} evaluate:{evaluated} → {score} ({_duration(result.seconds)})"
+    )
     if verbose:
         name = (
             result.resume.basics.name if result.resume.basics else result.refs[0].name
@@ -331,6 +337,11 @@ def _print_full_report(evaluation_data: dict, role: Role, candidate_name: str) -
 
     evaluation = build_evaluation_model(role).model_validate(evaluation_data)
     print_evaluation_results(evaluation, role, candidate_name)
+
+
+def _duration(seconds: float) -> str:
+    minutes, secs = divmod(round(seconds), 60)
+    return f"{minutes}m{secs:02d}s" if minutes else f"{secs}s"
 
 
 def _report_name(args, role: Role, judge: LLMChoice, local_path: Path) -> str:

@@ -5,7 +5,12 @@
       "api_key_env": "OPENROUTER_API_KEY",
       "structured_output": "json_schema",
       "extra_body": {
-        "provider": { "require_parameters": true, "data_collection": "deny" }
+        "provider": {
+          "require_parameters": true,
+          "data_collection": "deny",
+          "sort": "latency",
+          "quantizations": ["fp8", "fp16", "bf16", "fp32", "unknown"]
+        }
       },
       "models": "*"
     },

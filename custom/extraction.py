@@ -1,36 +1,63 @@
-"""Turn a Resume into an Extracted Resume via OCR plus upstream's section prompts."""
+"""Turn a Resume into an Extracted Resume: OCR, then one LLM call for the whole resume.
+
+Upstream's PDFHandler asks the LLM once per section — six calls, each resending the
+whole resume, and none for languages. For batch throughput this handler asks once,
+with a prompt merged from upstream's section templates plus languages
+(custom/prompts/resume.jinja), and keeps upstream's JSON cleanup and normalisation.
+"""
 
 import logging
 import tempfile
+import time
 from pathlib import Path
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 import pdf
 from custom.llm import LLMChoice, ObservedClient, bound_to
 from custom.ocr import MarkerOcr, extract_text_layer
-from models import JSONResume, Language, OpenAICompatibleProvider
+from models import (
+    Award,
+    Basics,
+    Education,
+    JSONResume,
+    Language,
+    OpenAICompatibleProvider,
+    Project,
+    Skill,
+    Work,
+)
 
 logger = logging.getLogger(__name__)
 
-# The denoised text layer is a hint, not the Resume; keep it from crowding every
-# section prompt.
+# The denoised text layer is a hint, not the Resume; keep it from crowding the prompt.
 _MAX_TEXT_LAYER_CHARS = 6000
-# Upstream extracts six sections but never languages, which the Role's Cantonese and
-# English bonuses depend on.
-_LANGUAGES_PROMPT = (Path(__file__).parent / "prompts" / "languages.jinja").read_text(
+_RESUME_PROMPT = (Path(__file__).parent / "prompts" / "resume.jinja").read_text(
     encoding="utf-8"
 )
-_SECTION_ATTEMPTS = 2  # upstream retries a failed section once
+_EXTRACTION_ATTEMPTS = 2  # one retry, as upstream does per section
+# Fills the "{{ section_name_param }}" of upstream's extraction system message.
+_ALL_SECTIONS = (
+    "full resume (basics, work, education, skills, projects, awards, languages)"
+)
 
 
-class LanguagesSection(BaseModel):
+class ResumeSections(BaseModel):
+    """Structured-output schema of the single extraction call. ``basics`` is required
+    so upstream's normaliser treats the reply as a whole resume, not one section."""
+
+    basics: Basics
+    work: Optional[List[Work]] = None
+    education: Optional[List[Education]] = None
+    skills: Optional[List[Skill]] = None
+    projects: Optional[List[Project]] = None
+    awards: Optional[List[Award]] = None
     languages: Optional[List[Language]] = None
 
 
 class OcrPDFHandler(pdf.PDFHandler):
-    """Upstream's per-section extraction, fed with OCR text instead of the text layer."""
+    """Upstream's extraction, fed with OCR text and asked in a single call."""
 
     def __init__(self, ocr: MarkerOcr, file_name: str):
         self._ocr = ocr
@@ -38,7 +65,9 @@ class OcrPDFHandler(pdf.PDFHandler):
         super().__init__()
 
     def extract_text_from_pdf(self, pdf_path: str) -> Optional[str]:
+        started = time.monotonic()
         markdown = self._ocr.to_markdown(Path(pdf_path))
+        logger.info("OCR of %s took %.1fs", self._file_name, time.monotonic() - started)
         if not markdown.strip():
             logger.error("OCR found no text in %s", self._file_name)
             return None
@@ -49,32 +78,37 @@ class OcrPDFHandler(pdf.PDFHandler):
     def _extract_all_sections_separately(
         self, text_content: str
     ) -> Optional[JSONResume]:
-        """Upstream's sections plus languages. Like upstream, a section that keeps
-        failing aborts the extraction, so it is retried next run rather than cached
-        without languages."""
-        resume = super()._extract_all_sections_separately(text_content)
-        if resume is None:
-            return None
-        languages = self._extract_languages(text_content)
-        if languages is None:
-            logger.error("Failed to extract languages section; aborting extraction")
-            return None
-        return JSONResume.model_validate(
-            {**resume.model_dump(), "languages": languages}
-        )
-
-    def _extract_languages(self, text_content: str) -> Optional[List[dict]]:
+        """One call for every section instead of upstream's one call per section."""
         prompt = self.template_manager.render_string(
-            _LANGUAGES_PROMPT, text_content=text_content
+            _RESUME_PROMPT, text_content=text_content
         )
-        for _ in range(_SECTION_ATTEMPTS):
+        for _ in range(_EXTRACTION_ATTEMPTS):
             data = self._call_llm_for_section(
-                "languages", text_content, prompt, LanguagesSection
+                _ALL_SECTIONS, text_content, prompt, ResumeSections
             )
-            if data is not None:
-                stated = data.get("languages") or []
-                return [l for l in stated if isinstance(l, dict) and l.get("language")]
+            if data:
+                return _to_json_resume(data)
+        logger.error("Failed to extract %s", self._file_name)
         return None
+
+
+def _to_json_resume(data: dict) -> JSONResume:
+    """Upstream-normalised sections -> JSONResume, dropping basics that do not
+    validate as upstream does."""
+    fields = {key: data.get(key) for key in JSONResume.model_fields}
+    try:
+        fields["basics"] = (
+            Basics.model_validate(fields["basics"]) if fields["basics"] else None
+        )
+    except ValidationError as err:
+        logger.error("Discarding invalid basics section: %s", err)
+        fields["basics"] = None
+    fields["languages"] = [
+        entry
+        for entry in fields.get("languages") or []
+        if isinstance(entry, dict) and entry.get("language")
+    ]
+    return JSONResume.model_validate(fields)
 
 
 def _text_layer_hint(pdf_path: Path) -> str:

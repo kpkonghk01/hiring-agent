@@ -79,7 +79,14 @@ provider 定義在 `providers.json`（upstream 的檔案，不要改）和 `prov
 - 有 `--provider`（評分）、`EXTRACTION_PROVIDER`（抽取）或 `LLM_PROVIDER` 時，就用指定的那個，**任何 model 名稱都接受**。列在 provider 底下的 model 用列出的 temperature/top_p；沒列出的用 0.1/0.9。
 - 都沒有時，就和 upstream 一樣，找「列出這個 model」的 provider。`"*"` 的 provider 不會被這樣推斷出來。
 
-- **`openrouter`** 預設帶 `data_collection: deny`，排除會拿資料去訓練的上游 provider。還有 `require_parameters: true`，只路由到支援 JSON schema 輸出的上游 provider。如果某個 model 因此找不到可用的上游 provider，請換一個 model。
+- **`openrouter`** 預設帶以下路由條件：
+  - `data_collection: deny`：排除會拿資料去訓練的上游 provider；
+  - `require_parameters: true`：只路由到支援 JSON schema 輸出的上游 provider；
+  - `sort: latency`：優先選延遲低的；
+  - `quantizations`：排除 fp4 這類低精度量化。
+
+  試跑時發現同一個 model 背後有大約 30 家上游 provider，品質和穩定度差很多，所以加了後兩項。如果某個 model 因此找不到可用的上游 provider，請換一個 model。
+- `EXTRACTION_REASONING=off`：抽取時關掉 model 的思考階段。抽取只是照抄，不需要思考。**只能用在支援 reasoning 的 model**，不支援的 model 加了這個參數，OpenRouter 會回 404。
 - **`llamacpp`**：
   - `llama-server` 不在意 model 名稱，但 `--model` 仍然要填一個能代表它的名字，例如 `qwen3-30b-a3b-q4`，因為這個名字會成為 Evaluation 的一部分（judge 是 `llamacpp:qwen3-30b-a3b-q4`）。
   - 如果你的 llama-server 有設 `--api-key`，就在 `providers.custom.json` 把 `"api_key_env"` 改成 `"LLAMACPP_API_KEY"`，再到 `.env` 設定這個值。
@@ -88,7 +95,7 @@ provider 定義在 `providers.json`（upstream 的檔案，不要改）和 `prov
 
 ### LLM 呼叫的總時限
 
-每次 LLM 呼叫最多等 `LLM_TIMEOUT` 秒，預設 300。這個時限包含 upstream 自己的重試。超時就算該份 Resume 失敗，下次執行會重試，整批不會停下來。
+每次 LLM 呼叫最多等 `LLM_TIMEOUT` 秒，預設 90。這個時限包含 upstream 自己的重試。超時就算該份 Resume 失敗，下次執行會重試，整批不會停下來。
 
 為什麼需要這個：upstream 的 `requests` timeout 只限制「兩次收到資料之間」的間隔，不限制總時間。試跑時就遇過一次：OpenRouter 的上游 provider 一直不回應、連線卻沒斷，整批卡了 50 分鐘。
 
@@ -140,7 +147,7 @@ uv run python batch.py ... --verbose
 
 ## 7. 輸出
 
-- **進度**：每份 Resume 一行，例如 `[3/40] 20261002 張三.pdf … extract:cached evaluate:new → 72.5`。
+- **進度**：每份 Resume 一行，例如 `[3/40] 20261002 張三.pdf … extract:cached evaluate:new → 72.5 (1m42s)`，括號是這份花的時間。`--verbose` 時還會列出 OCR 和每次 LLM 呼叫各花多久。
 - **Ranking 表**：依 overall score 排序。overall score 的算法是各 category 分數（以 Role 的上限封頂）加 bonus 減 deductions，和 `score.py` 印出的 OVERALL SCORE 相同。失敗的 Resume 列在最後，附上原因。
 - **CSV**：寫到 `reports/<role>__<provider_model>__<範圍>.csv`，編碼是 UTF-8 BOM，Excel 可以直接開。
   - `<範圍>`：gdrive 是 `<since>-<to>`，沒指定時分別寫成 `first`、`last`；local 是檔名或資料夾名稱。
@@ -171,7 +178,7 @@ GitHub Enrichment 的規則：
   - 5 個 category 合計 100 分，bonus 上限 15 分。
   - 語言加分：粵語最多 +5（因為要和香港團隊合作），英語最多 +2。只根據 Resume **明確寫出**的能力加分，不會從姓名或籍貫推測。Resume 沒提到粵語時，「待改進」會寫「未提及粵語能力，建議面試時確認」。
   - 學歷不影響分數，可以用 CSV 的 `highest_degree` 欄自行篩選。
-- **語言欄位**：upstream 的抽取不含語言能力，`batch.py` 額外抽取一段 languages，所以每份 Resume 共 7 次 LLM 呼叫。在這個功能加入之前抽取的 Resume 沒有語言欄位，要用 `--re-extract` 重抽。
+- **抽取方式**：upstream 是一段一段抽（6 次 LLM 呼叫，每次都重送整份履歷），而且不抽語言能力。`batch.py` 改成**一次呼叫就抽出整份**，包含語言欄位。prompt 是 `custom/prompts/resume.jinja`，由 upstream 的各段模板合併而成。所以每份 Resume 的 LLM 呼叫是：抽取 1 次、GitHub 挑選 project 1 次（有 GitHub 時）、評分 1 次。之前抽取的 Resume 要用 `--re-extract` 重抽，才會用到新的抽取方式和語言欄位。
 - 新增 Role：`uv run python score.py --init-role <name>`，再編輯 `roles/<name>/` 底下的檔案。
 
 ## 10. 同步 upstream

@@ -5,7 +5,8 @@ as ``Stages`` so the cache rules can be tested with fakes.
 """
 
 import logging
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, replace
 from typing import Callable, Iterable, List, Optional, Tuple
 
 from pydantic import BaseModel
@@ -47,6 +48,7 @@ class ResumeResult:
     evaluation_reused: bool = False
     failed_step: Optional[str] = None  # download | extract | github | evaluate
     failure: Optional[str] = None
+    seconds: float = 0.0  # wall-clock time spent on this Resume in this run
 
     @property
     def resume_hash(self) -> str:
@@ -87,7 +89,11 @@ def run(
     for index, refs in enumerate(groups, start=1):
         if on_start:
             on_start(index, len(groups), refs)
-        result = process_resume(refs, source, store, settings, stages)
+        started = time.monotonic()
+        result = replace(
+            process_resume(refs, source, store, settings, stages),
+            seconds=time.monotonic() - started,
+        )
         results.append(result)
         if on_result:
             on_result(index, len(groups), result)
