@@ -1,0 +1,13 @@
+{
+  "position_title": "AI Application Engineer (AI 应用工程师) on a growth and monetisation team",
+  "categories": [
+    {"key": "backend_engineering", "label": "後端工程與 API 架構", "max": 25, "icon": "🧱"},
+    {"key": "data_engineering", "label": "數據工程", "max": 20, "icon": "🗄️"},
+    {"key": "ai_application", "label": "AI/LLM 應用與安全護欄", "max": 25, "icon": "🤖"},
+    {"key": "growth_impact", "label": "商業變現與增長成果", "max": 20, "icon": "📈"},
+    {"key": "experience_fit", "label": "相關年資與協作", "max": 10, "icon": "🤝"}
+  ],
+  "bonus_max": 10,
+  "min_final_score": -20,
+  "max_final_score": 110
+}
