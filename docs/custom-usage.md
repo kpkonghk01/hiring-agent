@@ -16,33 +16,11 @@ uv run pytest    # 確認環境正常
 ## 2. `.env` 設定
 
 ```bash
-cp .env.example .env
+cp .env.custom.example .env
 ```
 
-再加上下列設定，`#` 開頭的是選填：
-
-```bash
-# --- 評分用的 model（judge）。--provider / --model 可以在每次執行時覆蓋 ---
-LLM_PROVIDER=openrouter            # ollama | gemini | anthropic | openrouter | llamacpp
-DEFAULT_MODEL=qwen/qwen3-235b-a22b-2507
-
-# --- 抽取用的 model（OCR 後轉成 Extracted Resume）。沒設就用上面兩個 ---
-# EXTRACTION_PROVIDER=llamacpp
-# EXTRACTION_MODEL=qwen3-30b-a3b
-
-# --- API keys / endpoints ---
-OPENROUTER_API_KEY=sk-or-...
-# LLAMACPP_BASE_URL=http://192.168.1.20:8080/v1   # 預設 http://localhost:8080/v1
-GITHUB_TOKEN=github_pat_...                        # 見第 4 節
-
-# --- Google Drive（和 cv-agent 共用同一個資料夾）---
-GDRIVE_FOLDER_ID=...                               # 和 cv-agent .env 的值相同
-# GOOGLE_OAUTH_CLIENT_SECRET=credentials/client_secret.json   # 預設值
-# GOOGLE_OAUTH_TOKEN=credentials/token.json                   # 預設值
-
-# --- SQLite store ---
-# STORE_PATH=data/hiring_agent.sqlite              # 預設值
-```
+[.env.custom.example](../.env.custom.example) 包含所有變數。標【必填】的項目要填，其餘可以留空，留空等同沒設定。
+upstream 的 `.env.example` 沒有改動，它只有 `DEFAULT_MODEL` 和 `GEMINI_API_KEY` 兩個變數，這份範本已經涵蓋。
 
 `.env`、`credentials/`、`*.sqlite`、`reports/` 都已經 gitignore。
 `.env` 裡的相對路徑（`STORE_PATH`、`GOOGLE_OAUTH_*`）一律相對於 **repo 根目錄**，跟你在哪個目錄執行指令無關。
