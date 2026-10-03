@@ -24,7 +24,7 @@ _Avoid_: score result, 打分結果
 A number inside an Evaluation — a category score or the total. Never the Evaluation as a whole.
 
 **GitHub Enrichment**:
-Profile and LLM-selected project data fetched from the GitHub profile linked in a Resume, added to the input of an Evaluation. It depends on the Role, the model and the moment it was fetched, so each Evaluation keeps its own snapshot of the GitHub Enrichment it was judged on. A Resume that links a GitHub profile is never Evaluated without its GitHub Enrichment; if fetching it fails, the Evaluation fails.
+Profile and LLM-selected project data fetched from the GitHub profile linked in a Resume, added to the input of an Evaluation. It depends on the Role, the model and the moment it was fetched, so each Evaluation keeps its own snapshot of the GitHub Enrichment it was judged on. A Resume that links a GitHub profile is never Evaluated without its GitHub Enrichment; if fetching it fails, the Evaluation fails. A linked profile that does not exist is not a failure — the Resume is Evaluated without GitHub Enrichment.
 _Avoid_: github data
 
 **Resume Source**:
