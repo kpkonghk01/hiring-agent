@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -50,7 +51,7 @@ def _serves(provider: dict, model_name: str) -> bool:
     return provider["models"] == _ANY_MODEL or model_name in provider["models"]
 
 
-def provider_for(model_name: str, provider_name: str = None) -> dict:
+def provider_for(model_name: str, provider_name: Optional[str] = None) -> dict:
     """Resolve provider config for a model.
 
     The provider is ``provider_name``, else env ``LLM_PROVIDER``, else inferred from
