@@ -13,6 +13,7 @@ model, so extraction and judging can use different models.
 """
 
 import os
+import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from types import ModuleType
@@ -49,6 +50,50 @@ class LLMAuthError(Exception):
 
 # HTTP statuses that mean the API key itself is wrong, revoked or not permitted.
 _AUTH_STATUSES = {401, 403}
+# Wall-clock limit for one LLM call, retries included. Upstream's requests timeout only
+# bounds the gap between bytes, so a provider that holds the connection open (as an
+# OpenRouter upstream did in a trial run) would otherwise hang the batch forever.
+_DEFAULT_LLM_TIMEOUT_SECONDS = 300.0
+
+
+def llm_timeout_seconds() -> float:
+    """``LLM_TIMEOUT`` from the environment (seconds), else the default."""
+    raw = os.getenv("LLM_TIMEOUT")
+    if not raw:
+        return _DEFAULT_LLM_TIMEOUT_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError(
+            f"LLM_TIMEOUT must be a number of seconds, got '{raw}'"
+        ) from None
+    if value <= 0:
+        raise ValueError(f"LLM_TIMEOUT must be positive, got '{raw}'")
+    return value
+
+
+def _with_deadline(fn, timeout: float, *args, **kwargs):
+    """Run ``fn`` but give up after ``timeout`` seconds.
+
+    A blocked socket read cannot be interrupted, so the call runs on a daemon thread
+    that is abandoned on timeout; it cannot keep the process alive at exit.
+    """
+    outcome = {}
+
+    def target():
+        try:
+            outcome["value"] = fn(*args, **kwargs)
+        except BaseException as err:
+            outcome["error"] = err
+
+    worker = threading.Thread(target=target, daemon=True, name="llm-call")
+    worker.start()
+    worker.join(timeout)
+    if worker.is_alive():
+        raise TimeoutError(f"no response within {timeout:.0f}s (LLM_TIMEOUT)")
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["value"]
 
 
 class ObservedClient:
@@ -62,6 +107,7 @@ class ObservedClient:
     def __init__(self, client: OpenAICompatibleProvider, choice: LLMChoice):
         self._client = client
         self._choice = choice
+        self._timeout = llm_timeout_seconds()
         self._auth_error: Optional[LLMAuthError] = None
         self._failures: List[str] = []
 
@@ -69,7 +115,7 @@ class ObservedClient:
         if self._auth_error:
             raise self._auth_error  # no point calling again with a rejected key
         try:
-            return self._client.chat(*args, **kwargs)
+            return _with_deadline(self._client.chat, self._timeout, *args, **kwargs)
         except requests.HTTPError as err:
             status = getattr(err.response, "status_code", None)
             if status in _AUTH_STATUSES:

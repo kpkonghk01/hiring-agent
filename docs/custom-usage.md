@@ -86,6 +86,12 @@ provider 定義在 `providers.json`（upstream 的檔案，不要改）和 `prov
 - 要新增其他 OpenAI-compatible 服務，在 `providers.custom.json` 加一段，照抄 `llamacpp` 的格式就可以。
 - upstream 的 `score.py` **不看** `LLM_PROVIDER`，只認列在 provider 底下的 model。如果要用 `score.py` 打 OpenRouter，就在 `providers.custom.json` 把 `openrouter` 的 `"models"` 改成列出 model 的 object，例如 `{"qwen/qwen3-235b-a22b-2507": {"temperature": 0.1, "top_p": 0.9}}`，並讓 `DEFAULT_MODEL` 指向它。
 
+### LLM 呼叫的總時限
+
+每次 LLM 呼叫最多等 `LLM_TIMEOUT` 秒，預設 300。這個時限包含 upstream 自己的重試。超時就算該份 Resume 失敗，下次執行會重試，整批不會停下來。
+
+為什麼需要這個：upstream 的 `requests` timeout 只限制「兩次收到資料之間」的間隔，不限制總時間。試跑時就遇過一次：OpenRouter 的上游 provider 一直不回應、連線卻沒斷，整批卡了 50 分鐘。
+
 ### 抽取 model 和評分 model 分開設定
 
 | 步驟 | 用哪個 model |

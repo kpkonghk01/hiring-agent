@@ -28,7 +28,13 @@ from custom.evaluation import evaluate
 from custom.extraction import extract_resume
 from custom.github_enrichment import enrich
 from custom.hashing import role_hash
-from custom.llm import LLMAuthError, LLMChoice, build_client, resolve_choice
+from custom.llm import (
+    LLMAuthError,
+    LLMChoice,
+    build_client,
+    llm_timeout_seconds,
+    resolve_choice,
+)
 from custom.ocr import MarkerOcr
 from custom.pipeline import ResumeResult, RunSettings, Stages, run
 from custom.ranking import format_table, overall_score, ranking_rows, write_csv
@@ -118,6 +124,7 @@ def main(argv=None) -> int:
     _configure_output(args.verbose)
     try:
         role = load_role(args.role)
+        llm_timeout_seconds()  # reject a malformed LLM_TIMEOUT before any work
         judge = resolve_choice(args.model or config.DEFAULT_MODEL, args.provider)
         extractor = resolve_choice(
             os.getenv("EXTRACTION_MODEL") or config.DEFAULT_MODEL,
