@@ -225,3 +225,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# --- custom branch (see docs/adr/0001) ---
+# Google OAuth secrets & tokens — never commit
+credentials/
+client_secret*.json
+token.json
+# SQLite store & generated rankings (contain candidate personal data)
+*.sqlite
+*.sqlite-*
+reports/
+# upstream ignores test_*.py; keep our tests tracked
+!tests/test_*.py

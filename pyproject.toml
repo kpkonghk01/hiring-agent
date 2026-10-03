@@ -1,0 +1,38 @@
+[project]
+name = "hiring-agent"
+version = "0.1.0"
+description = "Resume-to-Score pipeline — fork with a Google Drive Resume Source, SQLite cache and batch Ranking."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # Upstream requirements.txt (minus the unused google-generativeai). requirements.txt
+    # stays untouched; mirror its changes here after each upstream sync (docs/adr/0001).
+    # Exact pins: the vendored pymupdf_rag.py imports pymupdf4llm internals.
+    "PyMuPDF==1.26.3",
+    "pymupdf4llm==0.0.27",
+    "pydantic>=2.11.7",
+    "requests>=2.33.0",
+    "Jinja2>=3.1.6",
+    "python-dotenv>=1.2.2",
+    # Google Drive Resume Source + Ranking upload as a Google Sheet
+    "google-api-python-client>=2.200.0",
+    "google-auth>=2.56.3",
+    "google-auth-oauthlib>=1.4.1",
+    "google-auth-httplib2>=0.4.2",
+    # boss直聘 PDFs carry a poisoned text layer, so batch extraction force-OCRs (docs/adr/0003)
+    "marker-pdf>=2.0.0",
+    "pdfplumber>=0.11.9",
+]
+
+[dependency-groups]
+dev = [
+    "black>=25.9.0",
+    "pytest>=8.0",
+]
+
+[tool.uv]
+# Flat script-style project, not an installable package.
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
