@@ -63,6 +63,15 @@ Return ONLY a JSON object with this structure (use [] for a section the resume d
 - If a URL is present but its network or username is unclear, still include it with the available information.
 - A github.io or personal-domain URL has network "Portfolio".
 
+**WORK ENTRIES**
+- One entry per job (company + position + dates); do not merge or split jobs.
+- highlights: every bullet point, duty or achievement listed under that job, one string each, copied as written.
+- summary: a one-line description of the role only if the resume gives one separately from its bullet points; otherwise null.
+
+**PROJECTS**
+- One entry for every project the resume lists (e.g. under 项目经历); never merge two projects or drop one.
+- description: the project's description together with its bullet points, copied as written.
+
 **WORK DATES**
 1. Date ranges usually appear as "Start – End", separated by "-", "–", "—", "至" or "to", near the position title or company name.
 2. Extract both the start and the end date of each range.
