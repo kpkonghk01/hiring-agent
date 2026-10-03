@@ -162,6 +162,10 @@ GitHub Enrichment 的規則：
 ## 9. Role
 
 - `ai_application_engineer`：依據 cv-agent 的「AI 应用工程师」JD 建立。evidence 等文字欄位輸出繁體中文。
+  - 5 個 category 合計 100 分，bonus 上限 15 分。
+  - 語言加分：粵語最多 +5（因為要和香港團隊合作），英語最多 +2。只根據 Resume **明確寫出**的能力加分，不會從姓名或籍貫推測。Resume 沒提到粵語時，「待改進」會寫「未提及粵語能力，建議面試時確認」。
+  - 學歷不影響分數，可以用 CSV 的 `highest_degree` 欄自行篩選。
+- **語言欄位**：upstream 的抽取不含語言能力，`batch.py` 額外抽取一段 languages，所以每份 Resume 共 7 次 LLM 呼叫。在這個功能加入之前抽取的 Resume 沒有語言欄位，要用 `--re-extract` 重抽。
 - 新增 Role：`uv run python score.py --init-role <name>`，再編輯 `roles/<name>/` 底下的檔案。
 
 ## 10. 同步 upstream
