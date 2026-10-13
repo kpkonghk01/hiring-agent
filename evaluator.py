@@ -50,7 +50,9 @@ class ResumeEvaluator:
         # logger.info(f"🔤 Evaluation prompt being sent: {full_prompt}")
         try:
             system_message = self.template_manager.render_string(
-                self.role.system_message_source
+                self.role.system_message_source,
+                bonus_rules=self.role.bonus_rules,
+                bonus_max=self.role.bonus_max,
             )
 
             # Prepare chat parameters
@@ -62,8 +64,7 @@ class ResumeEvaluator:
                 ],
                 "options": {
                     "stream": False,
-                    "temperature": self.model_params.get("temperature", 0.5),
-                    "top_p": self.model_params.get("top_p", 0.9),
+                    **self.model_params,
                 },
             }
 

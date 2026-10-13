@@ -186,8 +186,9 @@ $ cp .env.example .env
 
 | Variable         | Values                                      | Description                                                            |
 | ---------------- | ------------------------------------------- | ---------------------------------------------------------------------- |
-| `DEFAULT_MODEL`  | for example `gemma4:latest` or `gemini-2.5-pro` | Model to use; must exist in `providers.json` — the provider is inferred from which provider lists it. Defaults to `default_model` in `providers.json`. |
+| `DEFAULT_MODEL`  | for example `gemma4:latest`, `gemini-2.5-pro`, or `gpt-6-luna` | Model to use; must exist in `providers.json` — the provider is inferred from which provider lists it. Defaults to `default_model` in `providers.json`. |
 | `GEMINI_API_KEY` | string                                      | Required when using a Gemini model.                                   |
+| `OPENAI_API_KEY` | string                                      | Required when using an OpenAI model.                                  |
 | `GITHUB_TOKEN`   | optional                                    | Inherits from your shell environment, improves GitHub API rate limits. |
 
 Provider mapping lives in `providers.json` — each provider declares its `base_url`, an optional API-key env var, and per-model parameters; `config.py` loads it and resolves the provider for a model. `config.py` also has a flag:
@@ -233,7 +234,8 @@ You can leave it on during iteration. See the next section for details.
 
 - `evaluator.py` scores the resume against the **role** selected on the command line.
 - Each role lives in `roles/<role_name>/` and defines its own scoring categories and weights in `role.json`, plus its own `criteria.jinja` and `system_message.jinja` prompts (encoding fairness and scoring rules).
-- The shipped `software_engineering_intern` role scores `open_source`, `self_projects`, `production`, and `technical_skills`, plus bonus and deductions, with evidence for each. Other roles can define entirely different categories.
+- The shipped `software_engineering_intern` role scores `open_source`, `self_projects`, `production`, `technical_skills`, and `ai_fluency`, plus bonus and deductions, with evidence for each. Other roles can define entirely different categories.
+- The intern role defines `bonus_rules` in `role.json`. The LLM returns evidence and allowed point values for each named bonus; Python calculates the total and itemized explanation. For HackerRank Orchestrate, the model supplies the best rank from awards and its points; Python validates +4 for ranks 1–100, +3 for 101–200, +1 for 201–500, and 0 otherwise, once per candidate. All bonuses share the 20-point cap. Roles without `bonus_rules` keep the original total-and-breakdown response format. Evidence interpretation still depends on the LLM.
 
 </details>
 
@@ -340,9 +342,15 @@ role directory instead.
 
 ### Gemini
 
-- Set `DEFAULT_MODEL` to a Gemini model listed in `providers.json`, for example `gemini-2.0-flash`
+- Set `DEFAULT_MODEL` to a Gemini model listed in `providers.json`, for example `gemini-3.8-flash`
 - Provide `GEMINI_API_KEY`
 - The same `models.OpenAICompatibleProvider` wrapper is used, pointed at Gemini's OpenAI-compatible endpoint
+
+### OpenAI
+
+- Set `DEFAULT_MODEL` to an OpenAI model listed in `providers.json`, for example `gpt-6-luna`
+- Provide `OPENAI_API_KEY`
+- Requests use OpenAI Chat Completions with JSON Schema structured output
 
 ---
 

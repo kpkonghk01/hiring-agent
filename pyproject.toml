@@ -7,9 +7,9 @@ requires-python = ">=3.11"
 dependencies = [
     # Upstream requirements.txt (minus the unused google-generativeai). requirements.txt
     # stays untouched; mirror its changes here after each upstream sync (docs/adr/0001).
-    # Exact pins: the vendored pymupdf_rag.py imports pymupdf4llm internals.
-    "PyMuPDF==1.26.3",
-    "pymupdf4llm==0.0.27",
+    # Exact pin: the vendored pymupdf_rag.py imports pymupdf4llm internals.
+    "PyMuPDF>=1.23.0",
+    "pymupdf4llm==0.2.7",
     "pydantic>=2.11.7",
     "requests>=2.33.0",
     "Jinja2>=3.1.6",
