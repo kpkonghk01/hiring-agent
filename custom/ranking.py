@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Iterable, List
 
 from custom.pipeline import ResumeResult
-from models import build_evaluation_model
+from models import build_bonus_model, build_evaluation_model
 from roles import Role
 from transform import transform_evaluation_response
 
@@ -23,11 +23,9 @@ def overall_score(evaluation: dict, role: Role) -> float:
     categories = sum(
         min(scores[key]["score"], cap) for key, cap in caps.items() if key in scores
     )
-    total = (
-        categories
-        + evaluation["bonus_points"]["total"]
-        - evaluation["deductions"]["total"]
-    )
+    # A Role with bonus_rules stores only its bonus items; the total is computed.
+    bonus = build_bonus_model(role).model_validate(evaluation["bonus_points"]).total
+    total = categories + bonus - evaluation["deductions"]["total"]
     return round(min(total, sum(caps.values()) + role.bonus_max), 1)
 
 

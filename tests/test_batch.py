@@ -22,13 +22,26 @@ from roles import load_role
 ROLE = load_role("software_engineering_intern")
 
 
+def no_bonus(role):
+    """A zero bonus in the role's shape: rule items when it has bonus_rules."""
+    if not role.bonus_rules:
+        return {"total": 0, "breakdown": "-"}
+    return {
+        "items": {
+            rule["key"]: {"points": 0, "evidence": "-"}
+            | ({"rank": None} if "tiers" in rule else {})
+            for rule in role.bonus_rules
+        }
+    }
+
+
 def make_evaluation(score):
     return build_evaluation_model(ROLE)(
         scores={
             c.key: {"score": score, "max": c.max, "evidence": "e"}
             for c in ROLE.categories
         },
-        bonus_points={"total": 0, "breakdown": "-"},
+        bonus_points=no_bonus(ROLE),
         deductions={"total": 0, "reasons": "-"},
         key_strengths=["s"],
         areas_for_improvement=["a"],

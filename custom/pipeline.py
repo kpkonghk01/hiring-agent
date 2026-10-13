@@ -153,7 +153,9 @@ def _new_evaluation(
     evaluation = _attempt(
         "evaluate", stages.evaluate, resume, outcome.data, settings.role
     )
-    evaluation_dict = evaluation.model_dump()
+    # round_trip drops computed fields (a bonus_rules Role's bonus total and
+    # breakdown), which the model would reject when this row is read back.
+    evaluation_dict = evaluation.model_dump(round_trip=True)
     store.put_evaluation(key, settings.role.name, evaluation_dict, outcome.data)
     return evaluation_dict, outcome.data
 
