@@ -40,5 +40,12 @@ You MUST respond with valid JSON matching the exact structure specified in the p
   - ai_application: 0-25 points
   - growth_impact: 0-20 points
   - experience_fit: 0-10 points
-- Bonus points total must be <= 15
+- Bonus points total must be <= {{ bonus_max }}; Python adds up the items below and applies that cap, so do not compute a total yourself
+- Return every configured bonus item with supporting evidence. Use 0 points when evidence is absent.
+{% if bonus_rules %}
+  - **STRICT BONUS RULES**: Use only the values configured below. No other point value is valid.
+  {% for rule in bonus_rules %}
+    - {{ rule.label }}: allowed points are {{ ([0] + rule.points) | join(", ") }}. {{ rule.description }}
+  {% endfor %}
+{% endif %}
 - **OVERALL SCORE LIMIT**: categories + bonus - deductions cannot exceed 115 points

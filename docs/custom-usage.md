@@ -179,6 +179,7 @@ GitHub Enrichment 的規則：
 
 - `ai_application_engineer`：依據 cv-agent 的「AI 应用工程师」JD 建立。evidence 等文字欄位輸出繁體中文。
   - 5 個 category 合計 100 分，bonus 上限 15 分。
+  - bonus 由 `role.json` 的 `bonus_rules` 定義 5 項（粵語、英語、AdTech/MarTech/電商、LangChain/RAG、內部效率工具），LLM 只對每一項給分和 evidence，**總分和說明由 Python 加總**，超過 15 分會截斷。給的分數不在該項允許的值內，評分會被拒絕。這個 Role 改成 `bonus_rules` 之前評分的結果，bonus 總分是 LLM 自己加的，可能和它寫的說明對不上。
   - 語言加分：粵語最多 +5（因為要和香港團隊合作），英語最多 +2。只根據 Resume **明確寫出**的能力加分，不會從姓名或籍貫推測。Resume 沒提到粵語時，「待改進」會寫「未提及粵語能力，建議面試時確認」。
   - 學歷不影響分數，可以用 CSV 的 `highest_degree` 欄自行篩選。
 - **抽取方式**：upstream 是一段一段抽（6 次 LLM 呼叫，每次都重送整份履歷），而且不抽語言能力。`batch.py` 改成**一次呼叫就抽出整份**，包含語言欄位。prompt 是 `custom/prompts/resume.jinja`，由 upstream 的各段模板合併而成。所以每份 Resume 的 LLM 呼叫是：抽取 1 次、GitHub 挑選 project 1 次（有 GitHub 時）、評分 1 次。之前抽取的 Resume 要用 `--re-extract` 重抽，才會用到新的抽取方式和語言欄位。

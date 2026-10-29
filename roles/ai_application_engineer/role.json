@@ -9,5 +9,37 @@
   ],
   "bonus_max": 15,
   "min_final_score": -20,
-  "max_final_score": 115
+  "max_final_score": 115,
+  "bonus_rules": [
+    {
+      "key": "cantonese",
+      "label": "Cantonese (粵語/广东话)",
+      "points": [2, 3, 5],
+      "description": "+5 for native or fluent Cantonese explicitly stated, or substantial work with Hong Kong teams in Cantonese; 2-3 for basic or conversational Cantonese explicitly stated; otherwise 0. Never infer it from name, hometown, birthplace, location or schools."
+    },
+    {
+      "key": "english",
+      "label": "English",
+      "points": [1, 2],
+      "description": "1-2 for working-level English explicitly evidenced (e.g. CET-6, IELTS/TOEFL, or work with overseas teams in English); otherwise 0. Never infer it from name, hometown, birthplace, location or schools."
+    },
+    {
+      "key": "adtech_ecommerce",
+      "label": "AdTech / MarTech / digital media / e-commerce",
+      "points": [2, 3, 4],
+      "description": "2-4 for hands-on experience in AdTech, MarTech, digital media or e-commerce evidenced in described work; otherwise 0."
+    },
+    {
+      "key": "ai_framework",
+      "label": "LangChain / RAG / AI application frameworks",
+      "points": [2, 3],
+      "description": "2-3 for LangChain, RAG or similar AI application frameworks used in real work; otherwise 0."
+    },
+    {
+      "key": "internal_tools",
+      "label": "Internal efficiency / automation tools",
+      "points": [2, 3],
+      "description": "2-3 for building efficiency or automation tools for internal sales or operations teams; otherwise 0."
+    }
+  ]
 }

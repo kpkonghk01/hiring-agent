@@ -65,7 +65,9 @@ The role asks for 3-5+ years in backend, data engineering, AI application or ML 
 - +2 to +3 for LangChain, RAG or similar AI application frameworks used in real work
 - +2 to +3 for building efficiency or automation tools for internal sales or operations teams
 
-**CRITICAL**: The total bonus points cannot exceed 15 points under any circumstances.
+**CRITICAL**: The total bonus points cannot exceed 15 points under any circumstances. Do not add the bonuses up yourself: Python sums the items and applies the cap.
+
+**MANDATORY BONUS EVIDENCE**: Return one entry for every bonus criterion in `bonus_points.items` (cantonese, english, adtech_ecommerce, ai_framework, internal_tools), including zero-point entries when evidence is absent. Use only the point values allowed for each item in the system message.
 
 ## DEDUCTIONS
 - -1 to -3 for keyword stuffing: long technology lists with no supporting work or project evidence
@@ -91,7 +93,13 @@ Analyze the following resume and provide a JSON response with this EXACT structu
         "growth_impact": {"score": 0, "max": 20, "evidence": "string"},
         "experience_fit": {"score": 0, "max": 10, "evidence": "string"}
     },
-    "bonus_points": {"total": 0, "breakdown": "string"},
+    "bonus_points": {"items": {
+        "cantonese": {"points": 0, "evidence": "string"},
+        "english": {"points": 0, "evidence": "string"},
+        "adtech_ecommerce": {"points": 0, "evidence": "string"},
+        "ai_framework": {"points": 0, "evidence": "string"},
+        "internal_tools": {"points": 0, "evidence": "string"}
+    }},
     "deductions": {"total": 0, "reasons": "string"},
     "key_strengths": ["strength1", "strength2", "strength3"],
     "areas_for_improvement": ["improvement1", "improvement2"]
